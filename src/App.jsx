@@ -1,146 +1,149 @@
 /**
- * ⚽ FUSSBALL-MANAGER PWA
- * Progressive Web App für schnelle Spiel-Eingabe & Statistiken
- * Offline-fähig, installierbar, superschnell
+ * ⚽ FUSSBALL-MANAGER PWA - MIT SUPABASE
+ * Spieler-Datenbank + Datum + Cloud-Sync
  */
 
-import React, { useState, useEffect, useRef } from 'react';
-import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import React, { useState, useEffect } from 'react';
+import { createClient } from '@supabase/supabase-js';
+
+// Supabase Client
+const SUPABASE_URL = 'https://sdtgwkvmqprbwvtkswxd.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_iCVXxm3VuPQIHEvWkkqqPw_1jCVn0QO';
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 export default function FussballManagerPWA() {
-  const [view, setView] = useState('home'); // home, newgame, goals, stats
+  const [view, setView] = useState('home');
   const [games, setGames] = useState([]);
-  const [players, setPlayers] = useState({});
-  const [currentGame, setCurrentGame] = useState(null);
+  const [players, setPlayers] = useState([]);
+  const [newPlayer, setNewPlayer] = useState('');
   const [formData, setFormData] = useState({
+    date: new Date().toISOString().split('T')[0],
     team1: '',
     team2: '',
     score1: 0,
-    score2: 0
+    score2: 0,
+    players1: [],
+    players2: []
   });
 
-  // IndexedDB für Offline-Speicherung
+  // Daten laden beim Start
   useEffect(() => {
-    initDB();
+    loadPlayers();
     loadGames();
-    // Service Worker registrieren
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').catch(err => console.log('SW Error:', err));
-    }
   }, []);
 
-  // IndexedDB initialisieren
-  const initDB = async () => {
-    return new Promise((resolve, reject) => {
-      const request = indexedDB.open('FussballDB', 1);
-      
-      request.onerror = () => reject(request.error);
-      request.onsuccess = () => resolve(request.result);
-      
-      request.onupgradeneeded = (event) => {
-        const db = event.target.result;
-        if (!db.objectStoreNames.contains('games')) {
-          db.createObjectStore('games', { keyPath: 'id' });
-        }
-        if (!db.objectStoreNames.contains('players')) {
-          db.createObjectStore('players', { keyPath: 'name' });
-        }
-      };
-    });
+  // Spieler laden
+  const loadPlayers = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('players')
+        .select('*')
+        .order('name');
+      if (error) throw error;
+      setPlayers(data || []);
+    } catch (err) {
+      console.error('Fehler beim Laden der Spieler:', err);
+    }
   };
 
-  // Daten speichern
-  const saveToIndexDB = async (storeName, data) => {
-    const db = await initDB();
-    const transaction = db.transaction(storeName, 'readwrite');
-    const store = transaction.objectStore(storeName);
-    store.add(data);
-    return new Promise((resolve, reject) => {
-      transaction.oncomplete = () => resolve();
-      transaction.onerror = () => reject(transaction.error);
-    });
-  };
-
-  // Daten laden
+  // Spiele laden
   const loadGames = async () => {
-    const db = await initDB();
-    const transaction = db.transaction('games', 'readonly');
-    const store = transaction.objectStore('games');
-    const request = store.getAll();
-    
-    return new Promise((resolve) => {
-      request.onsuccess = () => {
-        setGames(request.result.sort((a, b) => new Date(b.date) - new Date(a.date)));
-        resolve(request.result);
-      };
-    });
+    try {
+      const { data, error } = await supabase
+        .from('games')
+        .select('*')
+        .order('date', { ascending: false });
+      if (error) throw error;
+      setGames(data || []);
+    } catch (err) {
+      console.error('Fehler beim Laden der Spiele:', err);
+    }
+  };
+
+  // Neuen Spieler hinzufügen
+  const handleAddPlayer = async (e) => {
+    e.preventDefault();
+    if (!newPlayer.trim()) return;
+
+    try {
+      const { error } = await supabase
+        .from('players')
+        .insert([{ name: newPlayer }]);
+      if (error) throw error;
+
+      setNewPlayer('');
+      await loadPlayers();
+      showNotification(`✅ ${newPlayer} hinzugefügt`);
+    } catch (err) {
+      console.error('Fehler beim Hinzufügen:', err);
+      alert('Spieler existiert bereits oder Fehler beim Speichern');
+    }
   };
 
   // Neues Spiel speichern
   const handleNewGame = async (e) => {
     e.preventDefault();
-    
-    const newGame = {
-      id: Date.now(),
-      date: new Date().toISOString(),
-      team1: formData.team1,
-      team2: formData.team2,
-      score1: parseInt(formData.score1),
-      score2: parseInt(formData.score2),
-      goals: []
-    };
 
-    await saveToIndexDB('games', newGame);
-    await loadGames();
-    
-    setFormData({ team1: '', team2: '', score1: 0, score2: 0 });
-    setView('home');
-    
-    // Toast/Notification
-    showNotification(`✅ ${newGame.team1} ${newGame.score1}:${newGame.score2} ${newGame.team2}`);
+    if (!formData.team1 || !formData.team2) {
+      alert('Bitte beide Team-Namen eingeben!');
+      return;
+    }
+
+    try {
+      const gameId = `game_${Date.now()}`;
+
+      // Spiel speichern
+      const { error: gameError } = await supabase
+        .from('games')
+        .insert([{
+          game_id: gameId,
+          date: formData.date,
+          team1: formData.team1,
+          team2: formData.team2,
+          score1: parseInt(formData.score1),
+          score2: parseInt(formData.score2)
+        }]);
+
+      if (gameError) throw gameError;
+
+      // Spieler zum Spiel hinzufügen
+      const gamePlayers = [
+        ...formData.players1.map(p => ({ game_id: gameId, player_name: p, team: formData.team1 })),
+        ...formData.players2.map(p => ({ game_id: gameId, player_name: p, team: formData.team2 }))
+      ];
+
+      if (gamePlayers.length > 0) {
+        const { error: playersError } = await supabase
+          .from('game_players')
+          .insert(gamePlayers);
+        if (playersError) throw playersError;
+      }
+
+      await loadGames();
+      setFormData({
+        date: new Date().toISOString().split('T')[0],
+        team1: '',
+        team2: '',
+        score1: 0,
+        score2: 0,
+        players1: [],
+        players2: []
+      });
+      setView('home');
+      showNotification(`✅ ${formData.team1} ${formData.score1}:${formData.score2} ${formData.team2}`);
+    } catch (err) {
+      console.error('Fehler beim Speichern:', err);
+      alert('Fehler beim Speichern des Spiels');
+    }
   };
 
   const showNotification = (message) => {
-    // Browser Notification (wenn erlaubt)
     if ('Notification' in window && Notification.permission === 'granted') {
       new Notification('Fußball-Manager', { body: message });
     }
   };
 
-  const handleAddGoal = async (gameId, playerName, team) => {
-    const game = games.find(g => g.id === gameId);
-    if (!game) return;
-
-    game.goals = game.goals || [];
-    game.goals.push({ player: playerName, team, time: new Date().toLocaleTimeString() });
-
-    // Update IndexDB
-    const db = await initDB();
-    const transaction = db.transaction('games', 'readwrite');
-    const store = transaction.objectStore('games');
-    store.put(game);
-
-    await loadGames();
-    showNotification(`⚽ ${playerName} (${team})`);
-  };
-
-  // Statistiken berechnen
-  const calculateStats = () => {
-    let topScorers = {};
-    games.forEach(game => {
-      (game.goals || []).forEach(goal => {
-        topScorers[goal.player] = (topScorers[goal.player] || 0) + 1;
-      });
-    });
-
-    return Object.entries(topScorers)
-      .map(([name, goals]) => ({ name, goals }))
-      .sort((a, b) => b.goals - a.goals);
-  };
-
-  const stats = calculateStats();
-
-  // ============= STYLES =============
+  // Styles
   const styles = {
     container: {
       minHeight: '100vh',
@@ -190,13 +193,7 @@ export default function FussballManagerPWA() {
       borderRadius: '12px',
       padding: '1.25rem',
       marginBottom: '1rem',
-      backdropFilter: 'blur(10px)',
-      transition: 'all 0.3s ease',
-      cursor: 'pointer',
-      '&:hover': {
-        backgroundColor: 'rgba(255, 255, 255, 0.08)',
-        borderColor: '#10b981'
-      }
+      backdropFilter: 'blur(10px)'
     },
     button: {
       padding: '0.75rem 1.5rem',
@@ -228,11 +225,18 @@ export default function FussballManagerPWA() {
       borderRadius: '8px',
       color: '#fff',
       fontSize: '1rem',
-      boxSizing: 'border-box',
-      transition: 'all 0.2s ease'
+      boxSizing: 'border-box'
     },
-    form: {
-      marginBottom: '1rem'
+    select: {
+      width: '100%',
+      padding: '0.75rem',
+      marginBottom: '1rem',
+      backgroundColor: 'rgba(255, 255, 255, 0.08)',
+      border: '1px solid rgba(16, 185, 129, 0.2)',
+      borderRadius: '8px',
+      color: '#fff',
+      fontSize: '1rem',
+      boxSizing: 'border-box'
     },
     gameCard: {
       display: 'flex',
@@ -244,27 +248,12 @@ export default function FussballManagerPWA() {
       borderRadius: '8px',
       marginBottom: '0.75rem'
     },
-    score: {
-      display: 'flex',
-      alignItems: 'center',
-      gap: '0.75rem'
-    },
     scoreValue: {
       fontSize: '1.5rem',
       fontWeight: 'bold',
       color: '#10b981',
       minWidth: '50px',
       textAlign: 'center'
-    },
-    topScorerItem: {
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      padding: '0.75rem',
-      backgroundColor: 'rgba(255, 255, 255, 0.02)',
-      borderRadius: '6px',
-      marginBottom: '0.5rem',
-      borderLeft: '3px solid #10b981'
     },
     badge: {
       display: 'inline-block',
@@ -273,7 +262,8 @@ export default function FussballManagerPWA() {
       padding: '0.25rem 0.75rem',
       borderRadius: '20px',
       fontSize: '0.85rem',
-      fontWeight: '600'
+      fontWeight: '600',
+      marginRight: '0.5rem'
     },
     bottomNav: {
       position: 'fixed',
@@ -305,12 +295,28 @@ export default function FussballManagerPWA() {
     },
     navButtonActive: {
       color: '#10b981'
+    },
+    playerList: {
+      maxHeight: '200px',
+      overflowY: 'auto',
+      marginBottom: '1rem'
+    },
+    playerItem: {
+      padding: '0.5rem',
+      backgroundColor: 'rgba(16, 185, 129, 0.1)',
+      borderRadius: '6px',
+      marginBottom: '0.5rem',
+      cursor: 'pointer',
+      border: '1px solid rgba(16, 185, 129, 0.2)',
+      fontSize: '0.9rem'
+    },
+    playerItemSelected: {
+      backgroundColor: '#10b981',
+      color: '#0f172a'
     }
   };
 
-  // ============= VIEWS =============
-
-  // HOME VIEW
+  // ============= HOME VIEW =============
   if (view === 'home') {
     return (
       <div style={styles.container}>
@@ -320,33 +326,15 @@ export default function FussballManagerPWA() {
         </header>
 
         <div style={styles.content}>
-          {/* Schnell-Actions */}
+          {/* Quick Actions */}
           <div style={styles.section}>
             <button style={{...styles.button, ...styles.buttonPrimary}} onClick={() => setView('newgame')}>
               ➕ Neues Spiel
             </button>
-            <button style={{...styles.button, ...styles.buttonSecondary}} onClick={() => setView('goals')}>
-              ⚽ Tore hinzufügen
+            <button style={{...styles.button, ...styles.buttonSecondary}} onClick={() => setView('players')}>
+              👥 Spieler verwalten
             </button>
           </div>
-
-          {/* Top Scorers */}
-          {stats.length > 0 && (
-            <div style={styles.section}>
-              <h2 style={styles.sectionTitle}>🏆 Top Scorer</h2>
-              <div style={{...styles.card}}>
-                {stats.slice(0, 5).map((player, idx) => (
-                  <div key={idx} style={styles.topScorerItem}>
-                    <div>
-                      <span style={{color: '#10b981', fontWeight: '600', marginRight: '0.5rem'}}>#{idx + 1}</span>
-                      {player.name}
-                    </div>
-                    <span style={styles.badge}>{player.goals} ⚽</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
 
           {/* Letzte Spiele */}
           {games.length > 0 && (
@@ -354,20 +342,18 @@ export default function FussballManagerPWA() {
               <h2 style={styles.sectionTitle}>📅 Letzte Spiele</h2>
               {games.slice(0, 5).map((game) => {
                 const date = new Date(game.date);
-                const dayAgo = Math.floor((Date.now() - date) / (1000 * 60 * 60 * 24));
-                const timeStr = dayAgo === 0 ? 'Heute' : dayAgo === 1 ? 'Gestern' : `vor ${dayAgo} Tagen`;
-                
+                const dateStr = date.toLocaleDateString('de-DE');
+
                 return (
                   <div key={game.id} style={styles.gameCard}>
                     <div>
-                      <div style={{fontSize: '0.8rem', color: '#6b7280'}}>{timeStr}</div>
+                      <div style={{fontSize: '0.8rem', color: '#6b7280'}}>{dateStr}</div>
                       <div style={{marginTop: '0.25rem', fontSize: '0.9rem'}}>
                         {game.team1} vs {game.team2}
                       </div>
                     </div>
-                    <div style={styles.score}>
+                    <div>
                       <span style={styles.scoreValue}>{game.score1}:{game.score2}</span>
-                      <span style={{fontSize: '0.8rem', color: '#6b7280'}}>({game.goals?.length || 0})</span>
                     </div>
                   </div>
                 );
@@ -378,7 +364,6 @@ export default function FussballManagerPWA() {
           {games.length === 0 && (
             <div style={{...styles.card, textAlign: 'center', color: '#6b7280', padding: '2rem'}}>
               <p>📭 Noch keine Spiele erfasst</p>
-              <p style={{fontSize: '0.85rem'}}>Starten Sie mit "Neues Spiel"</p>
             </div>
           )}
         </div>
@@ -391,8 +376,8 @@ export default function FussballManagerPWA() {
           <button style={{...styles.navButton}} onClick={() => setView('newgame')}>
             ➕ Spiel
           </button>
-          <button style={{...styles.navButton}} onClick={() => setView('goals')}>
-            ⚽ Tore
+          <button style={{...styles.navButton}} onClick={() => setView('players')}>
+            👥 Spieler
           </button>
           <button style={{...styles.navButton}} onClick={() => setView('stats')}>
             📊 Stats
@@ -402,7 +387,7 @@ export default function FussballManagerPWA() {
     );
   }
 
-  // NEW GAME VIEW
+  // ============= NEW GAME VIEW =============
   if (view === 'newgame') {
     return (
       <div style={styles.container}>
@@ -411,7 +396,22 @@ export default function FussballManagerPWA() {
         </header>
 
         <div style={styles.content}>
-          <form onSubmit={handleNewGame} style={styles.form}>
+          <form onSubmit={handleNewGame} style={{marginBottom: '1rem'}}>
+            {/* Datum */}
+            <div style={styles.section}>
+              <label style={{display: 'block', fontSize: '0.9rem', marginBottom: '0.5rem', color: '#10b981'}}>
+                Datum
+              </label>
+              <input
+                type="date"
+                value={formData.date}
+                onChange={(e) => setFormData({...formData, date: e.target.value})}
+                style={styles.input}
+                required
+              />
+            </div>
+
+            {/* Team 1 */}
             <div style={styles.section}>
               <label style={{display: 'block', fontSize: '0.9rem', marginBottom: '0.5rem', color: '#10b981'}}>
                 Team 1 Name
@@ -426,36 +426,56 @@ export default function FussballManagerPWA() {
               />
             </div>
 
+            {/* Team 1 Spieler */}
             <div style={styles.section}>
               <label style={{display: 'block', fontSize: '0.9rem', marginBottom: '0.5rem', color: '#10b981'}}>
-                Team 1 Tore
+                Spieler {formData.team1 || 'Team 1'}
               </label>
-              <input
-                type="number"
-                min="0"
-                value={formData.score1}
-                onChange={(e) => setFormData({...formData, score1: e.target.value})}
-                style={styles.input}
-              />
+              <select
+                multiple
+                value={formData.players1}
+                onChange={(e) => setFormData({
+                  ...formData,
+                  players1: Array.from(e.target.selectedOptions, option => option.value)
+                })}
+                style={{...styles.select, height: '120px'}}
+              >
+                {players.map(p => (
+                  <option key={p.id} value={p.name}>{p.name}</option>
+                ))}
+              </select>
+              <small style={{color: '#6b7280'}}>Ctrl+Click zum Mehrfachauswählen</small>
             </div>
 
-            <div style={{textAlign: 'center', padding: '1rem', fontSize: '1.5rem', fontWeight: 'bold', color: '#10b981'}}>
-              {formData.score1} : {formData.score2}
+            {/* Score */}
+            <div style={{display: 'flex', gap: '1rem', marginBottom: '1rem'}}>
+              <div style={{flex: 1}}>
+                <label style={{display: 'block', fontSize: '0.9rem', marginBottom: '0.5rem', color: '#10b981'}}>
+                  Tore Team 1
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  value={formData.score1}
+                  onChange={(e) => setFormData({...formData, score1: e.target.value})}
+                  style={styles.input}
+                />
+              </div>
+              <div style={{flex: 1}}>
+                <label style={{display: 'block', fontSize: '0.9rem', marginBottom: '0.5rem', color: '#10b981'}}>
+                  Tore Team 2
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  value={formData.score2}
+                  onChange={(e) => setFormData({...formData, score2: e.target.value})}
+                  style={styles.input}
+                />
+              </div>
             </div>
 
-            <div style={styles.section}>
-              <label style={{display: 'block', fontSize: '0.9rem', marginBottom: '0.5rem', color: '#10b981'}}>
-                Team 2 Tore
-              </label>
-              <input
-                type="number"
-                min="0"
-                value={formData.score2}
-                onChange={(e) => setFormData({...formData, score2: e.target.value})}
-                style={styles.input}
-              />
-            </div>
-
+            {/* Team 2 */}
             <div style={styles.section}>
               <label style={{display: 'block', fontSize: '0.9rem', marginBottom: '0.5rem', color: '#10b981'}}>
                 Team 2 Name
@@ -470,6 +490,27 @@ export default function FussballManagerPWA() {
               />
             </div>
 
+            {/* Team 2 Spieler */}
+            <div style={styles.section}>
+              <label style={{display: 'block', fontSize: '0.9rem', marginBottom: '0.5rem', color: '#10b981'}}>
+                Spieler {formData.team2 || 'Team 2'}
+              </label>
+              <select
+                multiple
+                value={formData.players2}
+                onChange={(e) => setFormData({
+                  ...formData,
+                  players2: Array.from(e.target.selectedOptions, option => option.value)
+                })}
+                style={{...styles.select, height: '120px'}}
+              >
+                {players.map(p => (
+                  <option key={p.id} value={p.name}>{p.name}</option>
+                ))}
+              </select>
+              <small style={{color: '#6b7280'}}>Ctrl+Click zum Mehrfachauswählen</small>
+            </div>
+
             <button type="submit" style={{...styles.button, ...styles.buttonPrimary}}>
               ✅ Spiel speichern
             </button>
@@ -482,69 +523,48 @@ export default function FussballManagerPWA() {
     );
   }
 
-  // GOALS VIEW
-  if (view === 'goals') {
-    const lastGame = games[0];
-    
+  // ============= PLAYERS VIEW =============
+  if (view === 'players') {
     return (
       <div style={styles.container}>
         <header style={styles.header}>
-          <h1 style={styles.title}>⚽ Tore</h1>
+          <h1 style={styles.title}>👥 Spieler</h1>
         </header>
 
         <div style={styles.content}>
-          {lastGame ? (
-            <>
-              <div style={{...styles.card, marginBottom: '1.5rem'}}>
-                <div style={{textAlign: 'center'}}>
-                  <div style={{fontSize: '0.9rem', color: '#6b7280', marginBottom: '0.5rem'}}>Aktuelles Spiel</div>
-                  <div style={{fontSize: '1.25rem', fontWeight: 'bold'}}>
-                    {lastGame.team1} <span style={{color: '#10b981'}}>{lastGame.score1}</span> : 
-                    <span style={{color: '#10b981'}}>{lastGame.score2}</span> {lastGame.team2}
-                  </div>
-                </div>
-              </div>
-
-              <div style={styles.section}>
-                <h3 style={styles.sectionTitle}>{lastGame.team1}</h3>
-                <button style={{...styles.button, ...styles.buttonPrimary}} onClick={() => {
-                  const player = prompt('Spieler-Name:');
-                  if (player) handleAddGoal(lastGame.id, player, lastGame.team1);
-                }}>
-                  ➕ Tor für {lastGame.team1}
-                </button>
-              </div>
-
-              <div style={styles.section}>
-                <h3 style={styles.sectionTitle}>{lastGame.team2}</h3>
-                <button style={{...styles.button, ...styles.buttonPrimary}} onClick={() => {
-                  const player = prompt('Spieler-Name:');
-                  if (player) handleAddGoal(lastGame.id, player, lastGame.team2);
-                }}>
-                  ➕ Tor für {lastGame.team2}
-                </button>
-              </div>
-
-              {lastGame.goals && lastGame.goals.length > 0 && (
-                <div style={styles.section}>
-                  <h3 style={styles.sectionTitle}>📋 Torschützen</h3>
-                  {lastGame.goals.map((goal, idx) => (
-                    <div key={idx} style={styles.topScorerItem}>
-                      <div>{goal.player}</div>
-                      <span style={styles.badge}>{goal.team}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </>
-          ) : (
-            <div style={{...styles.card, textAlign: 'center', color: '#6b7280', padding: '2rem'}}>
-              <p>❌ Kein Spiel verfügbar</p>
-              <button style={{...styles.button, ...styles.buttonPrimary}} onClick={() => setView('newgame')}>
-                Neues Spiel erstellen
+          <form onSubmit={handleAddPlayer} style={{marginBottom: '1.5rem'}}>
+            <div style={styles.section}>
+              <label style={{display: 'block', fontSize: '0.9rem', marginBottom: '0.5rem', color: '#10b981'}}>
+                Neuen Spieler hinzufügen
+              </label>
+              <input
+                type="text"
+                placeholder="Spieler-Name"
+                value={newPlayer}
+                onChange={(e) => setNewPlayer(e.target.value)}
+                style={styles.input}
+              />
+              <button type="submit" style={{...styles.button, ...styles.buttonPrimary}}>
+                ➕ Hinzufügen
               </button>
             </div>
-          )}
+          </form>
+
+          <div style={styles.section}>
+            <h2 style={styles.sectionTitle}>📋 Alle Spieler ({players.length})</h2>
+            <div style={styles.card}>
+              {players.map((player) => (
+                <div key={player.id} style={{...styles.playerItem, marginBottom: '0.5rem'}}>
+                  {player.name}
+                </div>
+              ))}
+              {players.length === 0 && (
+                <div style={{color: '#6b7280', textAlign: 'center', padding: '1rem'}}>
+                  Keine Spieler vorhanden
+                </div>
+              )}
+            </div>
+          </div>
 
           <button style={{...styles.button, ...styles.buttonSecondary}} onClick={() => setView('home')}>
             Zurück
@@ -554,7 +574,7 @@ export default function FussballManagerPWA() {
     );
   }
 
-  // STATS VIEW
+  // ============= STATS VIEW =============
   if (view === 'stats') {
     return (
       <div style={styles.container}>
@@ -570,30 +590,11 @@ export default function FussballManagerPWA() {
                 <div style={{fontSize: '0.85rem', color: '#6b7280'}}>Spiele</div>
               </div>
               <div style={{...styles.card, textAlign: 'center'}}>
-                <div style={{fontSize: '2rem', color: '#10b981', fontWeight: 'bold'}}>
-                  {games.reduce((sum, g) => sum + (g.goals?.length || 0), 0)}
-                </div>
-                <div style={{fontSize: '0.85rem', color: '#6b7280'}}>Tore</div>
+                <div style={{fontSize: '2rem', color: '#10b981', fontWeight: 'bold'}}>{players.length}</div>
+                <div style={{fontSize: '0.85rem', color: '#6b7280'}}>Spieler</div>
               </div>
             </div>
           </div>
-
-          {stats.length > 0 && (
-            <div style={styles.section}>
-              <h2 style={styles.sectionTitle}>🏆 Top Scorer</h2>
-              <div style={styles.card}>
-                {stats.map((player, idx) => (
-                  <div key={idx} style={styles.topScorerItem}>
-                    <div>
-                      <span style={{color: '#10b981', fontWeight: '600', marginRight: '0.5rem'}}>#{idx + 1}</span>
-                      {player.name}
-                    </div>
-                    <span style={styles.badge}>{player.goals}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
 
           <button style={{...styles.button, ...styles.buttonSecondary}} onClick={() => setView('home')}>
             Zurück
