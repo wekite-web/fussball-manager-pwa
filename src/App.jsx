@@ -1276,28 +1276,82 @@ export default function FussballManagerPWA() {
 
         <div style={styles.content}>
           <div style={styles.section}>
-            <h2 style={styles.sectionTitle}>Spieler-Statistik</h2>
+            <h2 style={styles.sectionTitle}>Detaillierte Spieler-Statistik</h2>
             <div style={styles.card}>
               {playerStats.length > 0 ? (
                 <>
-                  <div style={{...styles.statRow, fontWeight: '600', backgroundColor: 'rgba(16, 185, 129, 0.1)'}}>
-                    <div>Spieler</div>
-                    <div>Pkte</div>
-                    <div>S-U-N</div>
-                    <div>T:G</div>
+                  <div style={{overflowX: 'auto'}}>
+                    <table style={{width: '100%', borderCollapse: 'collapse'}}>
+                      <thead>
+                        <tr style={{borderBottom: `2px solid ${GRUEN}`}}>
+                          <th style={{textAlign: 'left', padding: '0.75rem', fontSize: '0.8rem', fontWeight: '600'}}>Spieler</th>
+                          <th style={{textAlign: 'center', padding: '0.75rem', fontSize: '0.8rem', fontWeight: '600'}}>Pkte</th>
+                          <th style={{textAlign: 'center', padding: '0.75rem', fontSize: '0.8rem', fontWeight: '600'}}>Ø Pkte</th>
+                          <th style={{textAlign: 'center', padding: '0.75rem', fontSize: '0.8rem', fontWeight: '600'}}>S-U-N</th>
+                          <th style={{textAlign: 'center', padding: '0.75rem', fontSize: '0.8rem', fontWeight: '600'}}>Siegquote</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {playerStats.map((stat, idx) => {
+                          const avgPoints = stat.games_played > 0 ? (stat.points / stat.games_played).toFixed(2) : '0.00';
+                          const winPercentage = stat.games_played > 0 ? ((stat.wins / stat.games_played) * 100).toFixed(1) : '0.0';
+                          
+                          return (
+                            <tr key={idx} style={{borderBottom: '1px solid rgba(16, 185, 129, 0.1)'}}>
+                              <td style={{textAlign: 'left', padding: '0.75rem', fontSize: '0.85rem'}}>
+                                {stat.player_name}
+                                {isAdminUser(stat.player_name) && <span style={{marginLeft: '0.5rem'}}>👑</span>}
+                              </td>
+                              <td style={{textAlign: 'center', padding: '0.75rem', fontSize: '0.85rem', color: GRUEN, fontWeight: '600'}}>{stat.points}</td>
+                              <td style={{textAlign: 'center', padding: '0.75rem', fontSize: '0.85rem', color: '#9ca3af'}}>{avgPoints}</td>
+                              <td style={{textAlign: 'center', padding: '0.75rem', fontSize: '0.8rem', color: '#9ca3af'}}>
+                                {stat.wins}-{stat.draws}-{stat.losses}
+                              </td>
+                              <td style={{textAlign: 'center', padding: '0.75rem', fontSize: '0.85rem', color: '#9ca3af'}}>{winPercentage}%</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
-                  {playerStats.map((stat, idx) => (
-                    <div key={idx} style={styles.statRow}>
-                      <div>{stat.player_name}</div>
-                      <div style={styles.statValue}>{stat.points}</div>
-                      <div style={{fontSize: '0.8rem', color: '#9ca3af'}}>
-                        {stat.wins}-{stat.draws}-{stat.losses}
-                      </div>
-                      <div style={{fontSize: '0.8rem', color: '#9ca3af'}}>
-                        {stat.goals_for}:{stat.goals_against}
-                      </div>
+
+                  <div style={{marginTop: '1.5rem', paddingTop: '1rem', borderTop: `1px solid rgba(16, 185, 129, 0.2)`}}>
+                    <h3 style={{fontSize: '1rem', fontWeight: '600', marginBottom: '1rem', color: GRUEN}}>Tore & Differenzen</h3>
+                    <div style={{overflowX: 'auto'}}>
+                      <table style={{width: '100%', borderCollapse: 'collapse'}}>
+                        <thead>
+                          <tr style={{borderBottom: `2px solid ${GRUEN}`}}>
+                            <th style={{textAlign: 'left', padding: '0.75rem', fontSize: '0.8rem', fontWeight: '600'}}>Spieler</th>
+                            <th style={{textAlign: 'center', padding: '0.75rem', fontSize: '0.8rem', fontWeight: '600'}}>T:G</th>
+                            <th style={{textAlign: 'center', padding: '0.75rem', fontSize: '0.8rem', fontWeight: '600'}}>Differenz</th>
+                            <th style={{textAlign: 'center', padding: '0.75rem', fontSize: '0.8rem', fontWeight: '600'}}>Ø T/Spiel</th>
+                            <th style={{textAlign: 'center', padding: '0.75rem', fontSize: '0.8rem', fontWeight: '600'}}>Ø G/Spiel</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {playerStats.map((stat, idx) => {
+                            const torDifferenz = stat.goals_for - stat.goals_against;
+                            const avgGoalsFor = stat.games_played > 0 ? (stat.goals_for / stat.games_played).toFixed(2) : '0.00';
+                            const avgGoalsAgainst = stat.games_played > 0 ? (stat.goals_against / stat.games_played).toFixed(2) : '0.00';
+                            
+                            return (
+                              <tr key={idx} style={{borderBottom: '1px solid rgba(16, 185, 129, 0.1)'}}>
+                                <td style={{textAlign: 'left', padding: '0.75rem', fontSize: '0.85rem'}}>{stat.player_name}</td>
+                                <td style={{textAlign: 'center', padding: '0.75rem', fontSize: '0.85rem', color: '#9ca3af'}}>
+                                  {stat.goals_for}:{stat.goals_against}
+                                </td>
+                                <td style={{textAlign: 'center', padding: '0.75rem', fontSize: '0.85rem', color: torDifferenz > 0 ? '#10b981' : torDifferenz < 0 ? '#ef4444' : '#9ca3af', fontWeight: '600'}}>
+                                  {torDifferenz > 0 ? '+' : ''}{torDifferenz}
+                                </td>
+                                <td style={{textAlign: 'center', padding: '0.75rem', fontSize: '0.85rem', color: '#9ca3af'}}>{avgGoalsFor}</td>
+                                <td style={{textAlign: 'center', padding: '0.75rem', fontSize: '0.85rem', color: '#9ca3af'}}>{avgGoalsAgainst}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
                     </div>
-                  ))}
+                  </div>
                 </>
               ) : (
                 <div style={{color: '#6b7280', textAlign: 'center', padding: '1rem'}}>
