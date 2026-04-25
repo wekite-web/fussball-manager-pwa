@@ -1,6 +1,6 @@
 /**
- * ⚽ FUSSBALL-MANAGER PWA v5 - MIT PASSWORT-SCHUTZ
- * Admin-Authentifizierung mit Passwort
+ * ⚽ FUSSBALL-MANAGER PWA v6 - PUNKTE-BERECHNUNG FIXIERT
+ * Korrekte automatische Punkte-Verteilung + vereinfachte Logik
  */
 
 import React, { useState, useEffect } from 'react';
@@ -167,7 +167,7 @@ export default function FussballManagerPWA() {
     }
   };
 
-  const deleteGame = async (gameId) => {
+  const deleteGame = async (gameId, gameIdStr) => {
     if (!isAdminMode) {
       alert('Nur Admins können Spiele löschen!');
       return;
@@ -177,10 +177,10 @@ export default function FussballManagerPWA() {
 
     try {
       await supabase.from('games').delete().eq('id', gameId);
-      await supabase.from('goals').delete().eq('game_id', gameId);
-      await supabase.from('game_players').delete().eq('game_id', gameId);
-      await supabase.from('game_results').delete().eq('game_id', gameId);
-      await supabase.from('team_points').delete().eq('game_id', gameId);
+      await supabase.from('goals').delete().eq('game_id', gameIdStr);
+      await supabase.from('game_players').delete().eq('game_id', gameIdStr);
+      await supabase.from('game_results').delete().eq('game_id', gameIdStr);
+      await supabase.from('team_points').delete().eq('game_id', gameIdStr);
       await loadGames();
       showNotification('✅ Spiel gelöscht');
     } catch (err) {
@@ -221,6 +221,7 @@ export default function FussballManagerPWA() {
     });
   };
 
+  // ============= NEUE PUNKTE-BERECHNUNG (VEREINFACHT + KORREKT) =============
   const handleNewGame = async (e) => {
     e.preventDefault();
 
@@ -229,11 +230,13 @@ export default function FussballManagerPWA() {
       const score1 = parseInt(formData.score1);
       const score2 = parseInt(formData.score2);
 
+      // 1. BESTIMME GEWINNER
       let winner = 'draw';
       if (score1 > score2) winner = 'team1';
       if (score2 > score1) winner = 'team2';
 
       if (editingGame) {
+        // ===== UPDATE EXISTING GAME =====
         await supabase
           .from('games')
           .update({
@@ -251,7 +254,10 @@ export default function FussballManagerPWA() {
             winner: winner
           })
           .eq('game_id', gameId);
+
+        showNotification('✅ Spiel aktualisiert');
       } else {
+        // ===== CREATE NEW GAME =====
         const { error: gameError } = await supabase
           .from('games')
           .insert([{
@@ -265,6 +271,7 @@ export default function FussballManagerPWA() {
 
         if (gameError) throw gameError;
 
+        // Speichere Spiel-Ergebnis
         await supabase
           .from('game_results')
           .insert([{
@@ -276,6 +283,7 @@ export default function FussballManagerPWA() {
             winner: winner
           }]);
 
+        // Speichere Spieler-Zuordnung zu Teams
         const gamePlayers = [
           ...formData.players1.map(p => ({ game_id: gameId, player_name: p, team: formData.team1 })),
           ...formData.players2.map(p => ({ game_id: gameId, player_name: p, team: formData.team2 }))
@@ -285,6 +293,7 @@ export default function FussballManagerPWA() {
           await supabase.from('game_players').insert(gamePlayers);
         }
 
+        // Speichere Tore
         const goals = formData.goals.map(g => ({
           game_id: gameId,
           player_name: g.player,
@@ -294,6 +303,7 @@ export default function FussballManagerPWA() {
         if (goals.length > 0) {
           await supabase.from('goals').insert(goals);
 
+          // Update Top Scorers
           for (const goal of formData.goals) {
             const { data: existing } = await supabase
               .from('top_scorers')
@@ -312,9 +322,113 @@ export default function FussballManagerPWA() {
             }
           }
         }
+
+        // ===== PUNKTE BERECHNUNG (EINFACH & KORREKT) =====
+        // 2. BESTIMME PUNKTE
+        const pointsForWinner = 3;
+        const pointsForDraw = 1;
+        const pointsForLoser = 0;
+
+        // 3. VERTEILE PUNKTE AN SPIELER
+        // Team 1 (GELB)
+        for (const playerName of formData.players1) {
+          let pointsEarned = pointsForLoser; // Default: 0
+          let wins = 0, draws = 0, losses = 0;
+
+          if (winner === 'team1') {
+            pointsEarned = pointsForWinner; // 3 Punkte für Sieg
+            wins = 1;
+          } else if (winner === 'draw') {
+            pointsEarned = pointsForDraw; // 1 Punkt für Unentschieden
+            draws = 1;
+          } else {
+            losses = 1; // Niederlage
+          }
+
+          // Aktualisiere player_stats
+          const { data: existing } = await supabase
+            .from('player_stats')
+            .select('*')
+            .eq('player_name', playerName);
+
+          if (existing && existing.length > 0) {
+            const stats = existing[0];
+            await supabase
+              .from('player_stats')
+              .update({
+                games_played: stats.games_played + 1,
+                wins: stats.wins + wins,
+                draws: stats.draws + draws,
+                losses: stats.losses + losses,
+                goals_for: stats.goals_for + score1,
+                goals_against: stats.goals_against + score2,
+                points: stats.points + pointsEarned,
+                updated_at: new Date().toISOString()
+              })
+              .eq('player_name', playerName);
+          }
+
+          // Speichere team_points
+          await supabase
+            .from('team_points')
+            .insert([{
+              game_id: gameId,
+              player_name: playerName,
+              team: formData.team1,
+              points_earned: pointsEarned
+            }]);
+        }
+
+        // Team 2 (BLAU)
+        for (const playerName of formData.players2) {
+          let pointsEarned = pointsForLoser;
+          let wins = 0, draws = 0, losses = 0;
+
+          if (winner === 'team2') {
+            pointsEarned = pointsForWinner;
+            wins = 1;
+          } else if (winner === 'draw') {
+            pointsEarned = pointsForDraw;
+            draws = 1;
+          } else {
+            losses = 1;
+          }
+
+          const { data: existing } = await supabase
+            .from('player_stats')
+            .select('*')
+            .eq('player_name', playerName);
+
+          if (existing && existing.length > 0) {
+            const stats = existing[0];
+            await supabase
+              .from('player_stats')
+              .update({
+                games_played: stats.games_played + 1,
+                wins: stats.wins + wins,
+                draws: stats.draws + draws,
+                losses: stats.losses + losses,
+                goals_for: stats.goals_for + score2,
+                goals_against: stats.goals_against + score1,
+                points: stats.points + pointsEarned,
+                updated_at: new Date().toISOString()
+              })
+              .eq('player_name', playerName);
+          }
+
+          await supabase
+            .from('team_points')
+            .insert([{
+              game_id: gameId,
+              player_name: playerName,
+              team: formData.team2,
+              points_earned: pointsEarned
+            }]);
+        }
       }
 
       await loadGames();
+      await loadPlayerStats();
       await loadTopScorers();
       
       setFormData({
@@ -677,7 +791,7 @@ export default function FussballManagerPWA() {
                             ✏️ Edit
                           </button>
                           <button
-                            onClick={() => deleteGame(game.id)}
+                            onClick={() => deleteGame(game.id, game.game_id)}
                             style={{...styles.button, ...styles.buttonDanger, padding: '0.25rem 0.75rem', fontSize: '0.8rem', marginBottom: 0, width: 'auto'}}
                           >
                             🗑️ Löschen
