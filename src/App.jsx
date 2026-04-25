@@ -1,6 +1,6 @@
 /**
- * ⚽ FUSSBALL-MANAGER PWA - MIT SUPABASE
- * Spieler-Datenbank + Datum + Cloud-Sync
+ * ⚽ FUSSBALL-MANAGER PWA v2 - MIT TORSCHÜTZEN
+ * Spieler-Datenbank + Datum + Torschützen + Mobile-freundlich
  */
 
 import React, { useState, useEffect } from 'react';
@@ -23,7 +23,8 @@ export default function FussballManagerPWA() {
     score1: 0,
     score2: 0,
     players1: [],
-    players2: []
+    players2: [],
+    goals: []
   });
 
   // Daten laden beim Start
@@ -80,6 +81,41 @@ export default function FussballManagerPWA() {
     }
   };
 
+  // Spieler zu Team hinzufügen/entfernen
+  const togglePlayer = (playerName, team) => {
+    if (team === 1) {
+      setFormData({
+        ...formData,
+        players1: formData.players1.includes(playerName)
+          ? formData.players1.filter(p => p !== playerName)
+          : [...formData.players1, playerName]
+      });
+    } else {
+      setFormData({
+        ...formData,
+        players2: formData.players2.includes(playerName)
+          ? formData.players2.filter(p => p !== playerName)
+          : [...formData.players2, playerName]
+      });
+    }
+  };
+
+  // Tor hinzufügen
+  const addGoal = (playerName, team) => {
+    setFormData({
+      ...formData,
+      goals: [...formData.goals, { player: playerName, team }]
+    });
+  };
+
+  // Tor entfernen
+  const removeGoal = (index) => {
+    setFormData({
+      ...formData,
+      goals: formData.goals.filter((_, i) => i !== index)
+    });
+  };
+
   // Neues Spiel speichern
   const handleNewGame = async (e) => {
     e.preventDefault();
@@ -119,6 +155,20 @@ export default function FussballManagerPWA() {
         if (playersError) throw playersError;
       }
 
+      // Tore hinzufügen
+      const goals = formData.goals.map(g => ({
+        game_id: gameId,
+        player_name: g.player,
+        team: g.team
+      }));
+
+      if (goals.length > 0) {
+        const { error: goalsError } = await supabase
+          .from('goals')
+          .insert(goals);
+        if (goalsError) throw goalsError;
+      }
+
       await loadGames();
       setFormData({
         date: new Date().toISOString().split('T')[0],
@@ -127,7 +177,8 @@ export default function FussballManagerPWA() {
         score1: 0,
         score2: 0,
         players1: [],
-        players2: []
+        players2: [],
+        goals: []
       });
       setView('home');
       showNotification(`✅ ${formData.team1} ${formData.score1}:${formData.score2} ${formData.team2}`);
@@ -227,16 +278,20 @@ export default function FussballManagerPWA() {
       fontSize: '1rem',
       boxSizing: 'border-box'
     },
-    select: {
-      width: '100%',
+    checkbox: {
+      display: 'flex',
+      alignItems: 'center',
       padding: '0.75rem',
-      marginBottom: '1rem',
-      backgroundColor: 'rgba(255, 255, 255, 0.08)',
+      backgroundColor: 'rgba(255, 255, 255, 0.05)',
       border: '1px solid rgba(16, 185, 129, 0.2)',
       borderRadius: '8px',
-      color: '#fff',
-      fontSize: '1rem',
-      boxSizing: 'border-box'
+      marginBottom: '0.5rem',
+      cursor: 'pointer',
+      transition: 'all 0.2s ease'
+    },
+    checkboxChecked: {
+      backgroundColor: '#10b981',
+      borderColor: '#10b981'
     },
     gameCard: {
       display: 'flex',
@@ -264,6 +319,16 @@ export default function FussballManagerPWA() {
       fontSize: '0.85rem',
       fontWeight: '600',
       marginRight: '0.5rem'
+    },
+    goalItem: {
+      padding: '0.75rem',
+      backgroundColor: 'rgba(16, 185, 129, 0.1)',
+      border: '1px solid rgba(16, 185, 129, 0.2)',
+      borderRadius: '6px',
+      marginBottom: '0.5rem',
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center'
     },
     bottomNav: {
       position: 'fixed',
@@ -295,24 +360,6 @@ export default function FussballManagerPWA() {
     },
     navButtonActive: {
       color: '#10b981'
-    },
-    playerList: {
-      maxHeight: '200px',
-      overflowY: 'auto',
-      marginBottom: '1rem'
-    },
-    playerItem: {
-      padding: '0.5rem',
-      backgroundColor: 'rgba(16, 185, 129, 0.1)',
-      borderRadius: '6px',
-      marginBottom: '0.5rem',
-      cursor: 'pointer',
-      border: '1px solid rgba(16, 185, 129, 0.2)',
-      fontSize: '0.9rem'
-    },
-    playerItemSelected: {
-      backgroundColor: '#10b981',
-      color: '#0f172a'
     }
   };
 
@@ -326,7 +373,6 @@ export default function FussballManagerPWA() {
         </header>
 
         <div style={styles.content}>
-          {/* Quick Actions */}
           <div style={styles.section}>
             <button style={{...styles.button, ...styles.buttonPrimary}} onClick={() => setView('newgame')}>
               ➕ Neues Spiel
@@ -336,7 +382,6 @@ export default function FussballManagerPWA() {
             </button>
           </div>
 
-          {/* Letzte Spiele */}
           {games.length > 0 && (
             <div style={styles.section}>
               <h2 style={styles.sectionTitle}>📅 Letzte Spiele</h2>
@@ -368,7 +413,6 @@ export default function FussballManagerPWA() {
           )}
         </div>
 
-        {/* Bottom Navigation */}
         <nav style={styles.bottomNav}>
           <button style={{...styles.navButton, ...styles.navButtonActive}} onClick={() => setView('home')}>
             🏠 Home
@@ -400,7 +444,7 @@ export default function FussballManagerPWA() {
             {/* Datum */}
             <div style={styles.section}>
               <label style={{display: 'block', fontSize: '0.9rem', marginBottom: '0.5rem', color: '#10b981'}}>
-                Datum
+                📅 Datum
               </label>
               <input
                 type="date"
@@ -414,7 +458,7 @@ export default function FussballManagerPWA() {
             {/* Team 1 */}
             <div style={styles.section}>
               <label style={{display: 'block', fontSize: '0.9rem', marginBottom: '0.5rem', color: '#10b981'}}>
-                Team 1 Name
+                ⚽ Team 1 Name
               </label>
               <input
                 type="text"
@@ -429,29 +473,35 @@ export default function FussballManagerPWA() {
             {/* Team 1 Spieler */}
             <div style={styles.section}>
               <label style={{display: 'block', fontSize: '0.9rem', marginBottom: '0.5rem', color: '#10b981'}}>
-                Spieler {formData.team1 || 'Team 1'}
+                👥 Spieler {formData.team1 || 'Team 1'} ({formData.players1.length})
               </label>
-              <select
-                multiple
-                value={formData.players1}
-                onChange={(e) => setFormData({
-                  ...formData,
-                  players1: Array.from(e.target.selectedOptions, option => option.value)
-                })}
-                style={{...styles.select, height: '120px'}}
-              >
+              <div style={{...styles.card, padding: '0.75rem'}}>
                 {players.map(p => (
-                  <option key={p.id} value={p.name}>{p.name}</option>
+                  <div
+                    key={p.id}
+                    style={{
+                      ...styles.checkbox,
+                      ...(formData.players1.includes(p.name) ? styles.checkboxChecked : {})
+                    }}
+                    onClick={() => togglePlayer(p.name, 1)}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={formData.players1.includes(p.name)}
+                      onChange={() => {}}
+                      style={{marginRight: '0.75rem', width: '18px', height: '18px', cursor: 'pointer'}}
+                    />
+                    <span>{p.name}</span>
+                  </div>
                 ))}
-              </select>
-              <small style={{color: '#6b7280'}}>Ctrl+Click zum Mehrfachauswählen</small>
+              </div>
             </div>
 
             {/* Score */}
             <div style={{display: 'flex', gap: '1rem', marginBottom: '1rem'}}>
               <div style={{flex: 1}}>
                 <label style={{display: 'block', fontSize: '0.9rem', marginBottom: '0.5rem', color: '#10b981'}}>
-                  Tore Team 1
+                  Tore
                 </label>
                 <input
                   type="number"
@@ -463,7 +513,7 @@ export default function FussballManagerPWA() {
               </div>
               <div style={{flex: 1}}>
                 <label style={{display: 'block', fontSize: '0.9rem', marginBottom: '0.5rem', color: '#10b981'}}>
-                  Tore Team 2
+                  Tore
                 </label>
                 <input
                   type="number"
@@ -478,7 +528,7 @@ export default function FussballManagerPWA() {
             {/* Team 2 */}
             <div style={styles.section}>
               <label style={{display: 'block', fontSize: '0.9rem', marginBottom: '0.5rem', color: '#10b981'}}>
-                Team 2 Name
+                ⚽ Team 2 Name
               </label>
               <input
                 type="text"
@@ -493,22 +543,116 @@ export default function FussballManagerPWA() {
             {/* Team 2 Spieler */}
             <div style={styles.section}>
               <label style={{display: 'block', fontSize: '0.9rem', marginBottom: '0.5rem', color: '#10b981'}}>
-                Spieler {formData.team2 || 'Team 2'}
+                👥 Spieler {formData.team2 || 'Team 2'} ({formData.players2.length})
               </label>
-              <select
-                multiple
-                value={formData.players2}
-                onChange={(e) => setFormData({
-                  ...formData,
-                  players2: Array.from(e.target.selectedOptions, option => option.value)
-                })}
-                style={{...styles.select, height: '120px'}}
-              >
+              <div style={{...styles.card, padding: '0.75rem'}}>
                 {players.map(p => (
-                  <option key={p.id} value={p.name}>{p.name}</option>
+                  <div
+                    key={p.id}
+                    style={{
+                      ...styles.checkbox,
+                      ...(formData.players2.includes(p.name) ? styles.checkboxChecked : {})
+                    }}
+                    onClick={() => togglePlayer(p.name, 2)}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={formData.players2.includes(p.name)}
+                      onChange={() => {}}
+                      style={{marginRight: '0.75rem', width: '18px', height: '18px', cursor: 'pointer'}}
+                    />
+                    <span>{p.name}</span>
+                  </div>
                 ))}
-              </select>
-              <small style={{color: '#6b7280'}}>Ctrl+Click zum Mehrfachauswählen</small>
+              </div>
+            </div>
+
+            {/* Torschützen */}
+            <div style={styles.section}>
+              <label style={{display: 'block', fontSize: '0.9rem', marginBottom: '0.5rem', color: '#10b981'}}>
+                ⚽ Torschützen ({formData.goals.length})
+              </label>
+              
+              {/* Team 1 Tore */}
+              {formData.players1.length > 0 && (
+                <div style={{marginBottom: '1rem'}}>
+                  <div style={{fontSize: '0.85rem', color: '#6b7280', marginBottom: '0.5rem'}}>
+                    {formData.team1 || 'Team 1'}:
+                  </div>
+                  <div style={{...styles.card, padding: '0.75rem'}}>
+                    {formData.players1.map(p => (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => addGoal(p, formData.team1)}
+                        style={{
+                          ...styles.button,
+                          ...styles.buttonSecondary,
+                          marginBottom: '0.5rem',
+                          fontSize: '0.9rem',
+                          padding: '0.5rem'
+                        }}
+                      >
+                        ➕ {p}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Team 2 Tore */}
+              {formData.players2.length > 0 && (
+                <div style={{marginBottom: '1rem'}}>
+                  <div style={{fontSize: '0.85rem', color: '#6b7280', marginBottom: '0.5rem'}}>
+                    {formData.team2 || 'Team 2'}:
+                  </div>
+                  <div style={{...styles.card, padding: '0.75rem'}}>
+                    {formData.players2.map(p => (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => addGoal(p, formData.team2)}
+                        style={{
+                          ...styles.button,
+                          ...styles.buttonSecondary,
+                          marginBottom: '0.5rem',
+                          fontSize: '0.9rem',
+                          padding: '0.5rem'
+                        }}
+                      >
+                        ➕ {p}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Erfasste Tore */}
+              {formData.goals.length > 0 && (
+                <div style={{marginTop: '1rem'}}>
+                  <div style={{fontSize: '0.85rem', color: '#10b981', marginBottom: '0.5rem', fontWeight: '600'}}>
+                    Erfasste Tore:
+                  </div>
+                  {formData.goals.map((goal, idx) => (
+                    <div key={idx} style={styles.goalItem}>
+                      <span>{goal.player} ({goal.team})</span>
+                      <button
+                        type="button"
+                        onClick={() => removeGoal(idx)}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: '#ef4444',
+                          cursor: 'pointer',
+                          fontSize: '1.2rem'
+                        }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <button type="submit" style={{...styles.button, ...styles.buttonPrimary}}>
@@ -554,7 +698,7 @@ export default function FussballManagerPWA() {
             <h2 style={styles.sectionTitle}>📋 Alle Spieler ({players.length})</h2>
             <div style={styles.card}>
               {players.map((player) => (
-                <div key={player.id} style={{...styles.playerItem, marginBottom: '0.5rem'}}>
+                <div key={player.id} style={{padding: '0.75rem', borderBottom: '1px solid rgba(16, 185, 129, 0.1)'}}>
                   {player.name}
                 </div>
               ))}
