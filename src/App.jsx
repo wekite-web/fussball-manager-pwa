@@ -221,14 +221,19 @@ export default function FussballManagerPWA() {
     });
   };
 
-  // ============= ROLLBACK PUNKTE (für Edit) =============
+  // ============= ROLLBACK PUNKTE (für Edit) - FIXIERT =============
   const rollbackGamePoints = async (gameId) => {
     try {
       // Hole alle team_points für dieses Spiel
-      const { data: pointsData } = await supabase
+      const { data: pointsData, error: pointsError } = await supabase
         .from('team_points')
         .select('*')
         .eq('game_id', gameId);
+
+      if (pointsError) {
+        console.error('Fehler beim Laden team_points:', pointsError);
+        return;
+      }
 
       if (pointsData && pointsData.length > 0) {
         // Ziehe Punkte von jedem Spieler ab
@@ -248,30 +253,41 @@ export default function FussballManagerPWA() {
 
             // Undo die alten Statistiken basierend auf points_earned
             if (point.points_earned === 3) {
-              newWins -= 1; // War ein Sieg
+              newWins = Math.max(0, newWins - 1);
             } else if (point.points_earned === 1) {
-              newDraws -= 1; // War ein Unentschieden
+              newDraws = Math.max(0, newDraws - 1);
             } else if (point.points_earned === 0) {
-              newLosses -= 1; // War eine Niederlage
+              newLosses = Math.max(0, newLosses - 1);
             }
 
-            await supabase
+            const { error: updateError } = await supabase
               .from('player_stats')
               .update({
                 games_played: Math.max(0, stats.games_played - 1),
-                wins: Math.max(0, newWins),
-                draws: Math.max(0, newDraws),
-                losses: Math.max(0, newLosses),
+                wins: newWins,
+                draws: newDraws,
+                losses: newLosses,
                 points: Math.max(0, stats.points - point.points_earned),
                 updated_at: new Date().toISOString()
               })
               .eq('player_name', point.player_name);
+
+            if (updateError) {
+              console.error('Fehler beim Update player_stats:', updateError);
+            }
           }
         }
       }
 
-      // Lösche alte team_points
-      await supabase.from('team_points').delete().eq('game_id', gameId);
+      // Lösche alte team_points NACH dem Rollback
+      const { error: deleteError } = await supabase
+        .from('team_points')
+        .delete()
+        .eq('game_id', gameId);
+
+      if (deleteError) {
+        console.error('Fehler beim Löschen team_points:', deleteError);
+      }
 
     } catch (err) {
       console.error('Fehler beim Rollback:', err);
