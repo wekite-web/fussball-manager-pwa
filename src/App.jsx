@@ -18,8 +18,8 @@ export default function FussballManagerPWA() {
   const [newPlayer, setNewPlayer] = useState('');
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
-    team1: '',
-    team2: '',
+    team1: 'Gelb',
+    team2: 'Blau',
     score1: 0,
     score2: 0,
     players1: [],
@@ -462,11 +462,9 @@ export default function FussballManagerPWA() {
               </label>
               <input
                 type="text"
-                placeholder="z.B. Team A"
+                placeholder="Gelb"
                 value={formData.team1}
-                onChange={(e) => setFormData({...formData, team1: e.target.value})}
-                style={styles.input}
-                required
+                readOnly
               />
             </div>
 
@@ -532,11 +530,9 @@ export default function FussballManagerPWA() {
               </label>
               <input
                 type="text"
-                placeholder="z.B. Team B"
+                placeholder="Blau"
                 value={formData.team2}
-                onChange={(e) => setFormData({...formData, team2: e.target.value})}
-                style={styles.input}
-                required
+                readOnly
               />
             </div>
 
