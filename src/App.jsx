@@ -1,6 +1,6 @@
 /**
- * ⚽ FUSSBALL-MANAGER PWA v4 - MIT ADMIN-SYSTEM
- * Admin-Berechtigungen + Edit/Delete + Gelb/Blau Design
+ * ⚽ FUSSBALL-MANAGER PWA v5 - MIT PASSWORT-SCHUTZ
+ * Admin-Authentifizierung mit Passwort
  */
 
 import React, { useState, useEffect } from 'react';
@@ -10,6 +10,8 @@ const SUPABASE_URL = 'https://sdtgwkvmqprbwvtkswxd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_iCVXxm3VuPQIHEvWkkqqPw_1jCVn0QO';
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
+const ADMIN_PASSWORD = '1qay2wsx!Admin';
+
 export default function FussballManagerPWA() {
   const [view, setView] = useState('home');
   const [games, setGames] = useState([]);
@@ -18,6 +20,9 @@ export default function FussballManagerPWA() {
   const [topScorers, setTopScorers] = useState([]);
   const [admins, setAdmins] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
+  const [isAdminMode, setIsAdminMode] = useState(false);
+  const [adminPassword, setAdminPassword] = useState('');
+  const [showPasswordPrompt, setShowPasswordPrompt] = useState(false);
   const [newPlayer, setNewPlayer] = useState('');
   const [editingGame, setEditingGame] = useState(null);
   const [formData, setFormData] = useState({
@@ -31,7 +36,6 @@ export default function FussballManagerPWA() {
     goals: []
   });
 
-  // Daten laden beim Start
   useEffect(() => {
     loadAdmins();
     loadPlayers();
@@ -52,8 +56,20 @@ export default function FussballManagerPWA() {
     }
   };
 
-  const isAdmin = (playerName) => {
+  const isAdminUser = (playerName) => {
     return admins.some(admin => admin.player_name === playerName);
+  };
+
+  const handleAdminLogin = (password) => {
+    if (password === ADMIN_PASSWORD) {
+      setIsAdminMode(true);
+      setAdminPassword('');
+      setShowPasswordPrompt(false);
+      showNotification('✅ Admin-Mode aktiviert');
+    } else {
+      alert('❌ Falsches Passwort!');
+      setAdminPassword('');
+    }
   };
 
   const loadPlayers = async () => {
@@ -132,7 +148,7 @@ export default function FussballManagerPWA() {
   };
 
   const deletePlayer = async (playerName) => {
-    if (!isAdmin(currentUser)) {
+    if (!isAdminMode) {
       alert('Nur Admins können Spieler löschen!');
       return;
     }
@@ -152,7 +168,7 @@ export default function FussballManagerPWA() {
   };
 
   const deleteGame = async (gameId) => {
-    if (!isAdmin(currentUser)) {
+    if (!isAdminMode) {
       alert('Nur Admins können Spiele löschen!');
       return;
     }
@@ -218,7 +234,6 @@ export default function FussballManagerPWA() {
       if (score2 > score1) winner = 'team2';
 
       if (editingGame) {
-        // Update existing game
         await supabase
           .from('games')
           .update({
@@ -237,7 +252,6 @@ export default function FussballManagerPWA() {
           })
           .eq('game_id', gameId);
       } else {
-        // Create new game
         const { error: gameError } = await supabase
           .from('games')
           .insert([{
@@ -343,7 +357,6 @@ export default function FussballManagerPWA() {
     }
   };
 
-  // COLORS
   const GELB = '#fbbf24';
   const BLAU = '#3b82f6';
   const GRUEN = '#10b981';
@@ -495,7 +508,7 @@ export default function FussballManagerPWA() {
     }
   };
 
-  // ============= ADMIN SELECTOR =============
+  // ============= PLAYER SELECTOR =============
   if (!currentUser) {
     return (
       <div style={styles.container}>
@@ -511,19 +524,72 @@ export default function FussballManagerPWA() {
               {players.map((player) => (
                 <button
                   key={player.id}
-                  onClick={() => setCurrentUser(player.name)}
+                  onClick={() => {
+                    setCurrentUser(player.name);
+                    if (isAdminUser(player.name)) {
+                      setShowPasswordPrompt(true);
+                    } else {
+                      setIsAdminMode(false);
+                    }
+                  }}
                   style={{
                     ...styles.button,
                     ...styles.buttonSecondary,
                     marginBottom: '0.5rem',
-                    background: isAdmin(player.name) ? `linear-gradient(135deg, ${GELB} 0%, ${BLAU} 100%)` : 'rgba(255, 255, 255, 0.1)',
-                    color: isAdmin(player.name) ? '#000' : '#fff'
+                    background: isAdminUser(player.name) ? `linear-gradient(135deg, ${GELB} 0%, ${BLAU} 100%)` : 'rgba(255, 255, 255, 0.1)',
+                    color: isAdminUser(player.name) ? '#000' : '#fff'
                   }}
                 >
-                  {player.name} {isAdmin(player.name) ? '👑' : ''}
+                  {player.name} {isAdminUser(player.name) ? '👑' : ''}
                 </button>
               ))}
             </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ============= ADMIN PASSWORD PROMPT =============
+  if (showPasswordPrompt && isAdminUser(currentUser)) {
+    return (
+      <div style={styles.container}>
+        <header style={styles.header}>
+          <h1 style={styles.title}>🔐 Admin-Modus</h1>
+          <p style={styles.subtitle}>Passwort erforderlich</p>
+        </header>
+
+        <div style={styles.content}>
+          <div style={styles.section}>
+            <label style={{display: 'block', fontSize: '0.9rem', marginBottom: '0.5rem', color: GRUEN}}>
+              Admin-Passwort
+            </label>
+            <input
+              type="password"
+              placeholder="Passwort eingeben"
+              value={adminPassword}
+              onChange={(e) => setAdminPassword(e.target.value)}
+              style={styles.input}
+              onKeyPress={(e) => {
+                if (e.key === 'Enter') handleAdminLogin(adminPassword);
+              }}
+            />
+            <button 
+              onClick={() => handleAdminLogin(adminPassword)}
+              style={{...styles.button, ...styles.buttonPrimary}}
+            >
+              ✅ Bestätigen
+            </button>
+            <button 
+              onClick={() => {
+                setShowPasswordPrompt(false);
+                setCurrentUser(null);
+                setAdminPassword('');
+              }}
+              style={{...styles.button, ...styles.buttonSecondary}}
+            >
+              Abbrechen
+            </button>
           </div>
         </div>
       </div>
@@ -536,7 +602,9 @@ export default function FussballManagerPWA() {
       <div style={styles.container}>
         <header style={styles.header}>
           <h1 style={styles.title}>⚽ Manager</h1>
-          <p style={styles.subtitle}>{currentUser} {isAdmin(currentUser) ? '👑' : ''}</p>
+          <p style={styles.subtitle}>
+            {currentUser} {isAdminMode ? '👑 ADMIN' : ''}
+          </p>
         </header>
 
         <div style={styles.content}>
@@ -547,9 +615,24 @@ export default function FussballManagerPWA() {
             <button style={{...styles.button, ...styles.buttonSecondary}} onClick={() => setView('players')}>
               👥 Spieler verwalten
             </button>
+            {isAdminUser(currentUser) && (
+              <button 
+                style={{...styles.button, ...styles.buttonSecondary, background: isAdminMode ? '#10b981' : 'rgba(255, 0, 0, 0.3)'}} 
+                onClick={() => {
+                  setIsAdminMode(!isAdminMode);
+                  showNotification(isAdminMode ? '❌ Admin-Mode deaktiviert' : '✅ Admin-Mode aktiviert');
+                }}
+              >
+                {isAdminMode ? '🔐 Admin-Mode: AN' : '🔓 Admin-Mode: AUS'}
+              </button>
+            )}
             <button 
               style={{...styles.button, ...styles.buttonSecondary}} 
-              onClick={() => setCurrentUser(null)}
+              onClick={() => {
+                setCurrentUser(null);
+                setIsAdminMode(false);
+                setShowPasswordPrompt(false);
+              }}
             >
               🔀 Benutzer wechseln
             </button>
@@ -585,7 +668,7 @@ export default function FussballManagerPWA() {
                   <div key={game.id} style={{...styles.card, padding: '1rem', marginBottom: '0.75rem'}}>
                     <div style={{fontSize: '0.8rem', color: '#6b7280', marginBottom: '0.5rem'}}>
                       {dateStr}
-                      {isAdmin(currentUser) && (
+                      {isAdminMode && (
                         <div style={{marginTop: '0.5rem', display: 'flex', gap: '0.5rem'}}>
                           <button
                             onClick={() => startEditGame(game)}
@@ -657,7 +740,6 @@ export default function FussballManagerPWA() {
               />
             </div>
 
-            {/* Team 1 - GELB */}
             <div style={styles.section}>
               <label style={{display: 'block', fontSize: '0.9rem', marginBottom: '0.5rem', color: GELB}}>
                 👥 GELB ({formData.players1.length})
@@ -684,7 +766,6 @@ export default function FussballManagerPWA() {
               </div>
             </div>
 
-            {/* Score */}
             <div style={{display: 'flex', gap: '1rem', marginBottom: '1rem'}}>
               <div style={{flex: 1}}>
                 <label style={{display: 'block', fontSize: '0.9rem', marginBottom: '0.5rem', color: GELB}}>
@@ -712,7 +793,6 @@ export default function FussballManagerPWA() {
               </div>
             </div>
 
-            {/* Team 2 - BLAU */}
             <div style={styles.section}>
               <label style={{display: 'block', fontSize: '0.9rem', marginBottom: '0.5rem', color: BLAU}}>
                 👥 BLAU ({formData.players2.length})
@@ -739,7 +819,6 @@ export default function FussballManagerPWA() {
               </div>
             </div>
 
-            {/* Torschützen */}
             <div style={styles.section}>
               <label style={{display: 'block', fontSize: '0.9rem', marginBottom: '0.5rem', color: GRUEN}}>
                 ⚽ Torschützen ({formData.goals.length})
@@ -949,9 +1028,9 @@ export default function FussballManagerPWA() {
                 <div key={player.id} style={{...styles.statRow, paddingTop: '0.5rem', paddingBottom: '0.5rem'}}>
                   <div>
                     {player.name}
-                    {isAdmin(player.name) && <span style={{marginLeft: '0.5rem'}}>👑</span>}
+                    {isAdminUser(player.name) && <span style={{marginLeft: '0.5rem'}}>👑</span>}
                   </div>
-                  {isAdmin(currentUser) && (
+                  {isAdminMode && (
                     <button
                       onClick={() => deletePlayer(player.name)}
                       style={{
