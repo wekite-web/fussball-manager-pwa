@@ -1,6 +1,6 @@
 /**
- * ⚽ FUSSBALL-MANAGER PWA v6 - PUNKTE-BERECHNUNG FIXIERT
- * Korrekte automatische Punkte-Verteilung + vereinfachte Logik
+ * ⚽ FUSSBALL-MANAGER PWA v7 - SPIEL-EDIT MIT PUNKTE-ROLLBACK
+ * Bearbeitung von Spielen mit korrekter Punkte-Neuberechnung
  */
 
 import React, { useState, useEffect } from 'react';
@@ -221,7 +221,65 @@ export default function FussballManagerPWA() {
     });
   };
 
-  // ============= NEUE PUNKTE-BERECHNUNG (VEREINFACHT + KORREKT) =============
+  // ============= ROLLBACK PUNKTE (für Edit) =============
+  const rollbackGamePoints = async (gameId) => {
+    try {
+      // Hole alle team_points für dieses Spiel
+      const { data: pointsData } = await supabase
+        .from('team_points')
+        .select('*')
+        .eq('game_id', gameId);
+
+      if (pointsData && pointsData.length > 0) {
+        // Ziehe Punkte von jedem Spieler ab
+        for (const point of pointsData) {
+          const { data: playerData } = await supabase
+            .from('player_stats')
+            .select('*')
+            .eq('player_name', point.player_name);
+
+          if (playerData && playerData.length > 0) {
+            const stats = playerData[0];
+            
+            // Berechne neue Werte (Punkte zurückziehen, Statistiken zurücksetzen)
+            let newWins = stats.wins;
+            let newDraws = stats.draws;
+            let newLosses = stats.losses;
+
+            // Undo die alten Statistiken basierend auf points_earned
+            if (point.points_earned === 3) {
+              newWins -= 1; // War ein Sieg
+            } else if (point.points_earned === 1) {
+              newDraws -= 1; // War ein Unentschieden
+            } else if (point.points_earned === 0) {
+              newLosses -= 1; // War eine Niederlage
+            }
+
+            await supabase
+              .from('player_stats')
+              .update({
+                games_played: Math.max(0, stats.games_played - 1),
+                wins: Math.max(0, newWins),
+                draws: Math.max(0, newDraws),
+                losses: Math.max(0, newLosses),
+                points: Math.max(0, stats.points - point.points_earned),
+                updated_at: new Date().toISOString()
+              })
+              .eq('player_name', point.player_name);
+          }
+        }
+      }
+
+      // Lösche alte team_points
+      await supabase.from('team_points').delete().eq('game_id', gameId);
+
+    } catch (err) {
+      console.error('Fehler beim Rollback:', err);
+      throw err;
+    }
+  };
+
+  // ============= NEUE PUNKTE-BERECHNUNG =============
   const handleNewGame = async (e) => {
     e.preventDefault();
 
@@ -237,6 +295,11 @@ export default function FussballManagerPWA() {
 
       if (editingGame) {
         // ===== UPDATE EXISTING GAME =====
+        
+        // SCHRITT 1: Rollback alte Punkte
+        await rollbackGamePoints(gameId);
+
+        // SCHRITT 2: Update Spiel-Daten
         await supabase
           .from('games')
           .update({
@@ -255,97 +318,26 @@ export default function FussballManagerPWA() {
           })
           .eq('game_id', gameId);
 
-        showNotification('✅ Spiel aktualisiert');
-      } else {
-        // ===== CREATE NEW GAME =====
-        const { error: gameError } = await supabase
-          .from('games')
-          .insert([{
-            game_id: gameId,
-            date: formData.date,
-            team1: formData.team1,
-            team2: formData.team2,
-            score1: score1,
-            score2: score2
-          }]);
-
-        if (gameError) throw gameError;
-
-        // Speichere Spiel-Ergebnis
-        await supabase
-          .from('game_results')
-          .insert([{
-            game_id: gameId,
-            team1: formData.team1,
-            team2: formData.team2,
-            score1: score1,
-            score2: score2,
-            winner: winner
-          }]);
-
-        // Speichere Spieler-Zuordnung zu Teams
-        const gamePlayers = [
-          ...formData.players1.map(p => ({ game_id: gameId, player_name: p, team: formData.team1 })),
-          ...formData.players2.map(p => ({ game_id: gameId, player_name: p, team: formData.team2 }))
-        ];
-
-        if (gamePlayers.length > 0) {
-          await supabase.from('game_players').insert(gamePlayers);
-        }
-
-        // Speichere Tore
-        const goals = formData.goals.map(g => ({
-          game_id: gameId,
-          player_name: g.player,
-          team: g.team
-        }));
-
-        if (goals.length > 0) {
-          await supabase.from('goals').insert(goals);
-
-          // Update Top Scorers
-          for (const goal of formData.goals) {
-            const { data: existing } = await supabase
-              .from('top_scorers')
-              .select('*')
-              .eq('player_name', goal.player);
-
-            if (existing && existing.length > 0) {
-              await supabase
-                .from('top_scorers')
-                .update({ total_goals: existing[0].total_goals + 1 })
-                .eq('player_name', goal.player);
-            } else {
-              await supabase
-                .from('top_scorers')
-                .insert([{ player_name: goal.player, total_goals: 1 }]);
-            }
-          }
-        }
-
-        // ===== PUNKTE BERECHNUNG (EINFACH & KORREKT) =====
-        // 2. BESTIMME PUNKTE
+        // SCHRITT 3: Berechne und vergebe neue Punkte (wie bei neuem Spiel)
         const pointsForWinner = 3;
         const pointsForDraw = 1;
         const pointsForLoser = 0;
 
-        // 3. VERTEILE PUNKTE AN SPIELER
-        // Team 1 (GELB)
+        // Team 1
         for (const playerName of formData.players1) {
-          let pointsEarned = pointsForLoser; // Default: 0
+          let pointsEarned = pointsForLoser;
           let wins = 0, draws = 0, losses = 0;
 
           if (winner === 'team1') {
-            pointsEarned = pointsForWinner; // 3 Punkte für Sieg
+            pointsEarned = pointsForWinner;
             wins = 1;
           } else if (winner === 'draw') {
-            pointsEarned = pointsForDraw; // 1 Punkt für Unentschieden
+            pointsEarned = pointsForDraw;
             draws = 1;
           } else {
-            losses = 1; // Niederlage
+            losses = 1;
           }
 
-          // Aktualisiere player_stats
           const { data: existing } = await supabase
             .from('player_stats')
             .select('*')
@@ -368,7 +360,6 @@ export default function FussballManagerPWA() {
               .eq('player_name', playerName);
           }
 
-          // Speichere team_points
           await supabase
             .from('team_points')
             .insert([{
@@ -379,7 +370,7 @@ export default function FussballManagerPWA() {
             }]);
         }
 
-        // Team 2 (BLAU)
+        // Team 2
         for (const playerName of formData.players2) {
           let pointsEarned = pointsForLoser;
           let wins = 0, draws = 0, losses = 0;
@@ -425,6 +416,169 @@ export default function FussballManagerPWA() {
               points_earned: pointsEarned
             }]);
         }
+
+        showNotification('✅ Spiel aktualisiert');
+
+      } else {
+        // ===== CREATE NEW GAME =====
+        const { error: gameError } = await supabase
+          .from('games')
+          .insert([{
+            game_id: gameId,
+            date: formData.date,
+            team1: formData.team1,
+            team2: formData.team2,
+            score1: score1,
+            score2: score2
+          }]);
+
+        if (gameError) throw gameError;
+
+        await supabase
+          .from('game_results')
+          .insert([{
+            game_id: gameId,
+            team1: formData.team1,
+            team2: formData.team2,
+            score1: score1,
+            score2: score2,
+            winner: winner
+          }]);
+
+        const gamePlayers = [
+          ...formData.players1.map(p => ({ game_id: gameId, player_name: p, team: formData.team1 })),
+          ...formData.players2.map(p => ({ game_id: gameId, player_name: p, team: formData.team2 }))
+        ];
+
+        if (gamePlayers.length > 0) {
+          await supabase.from('game_players').insert(gamePlayers);
+        }
+
+        const goals = formData.goals.map(g => ({
+          game_id: gameId,
+          player_name: g.player,
+          team: g.team
+        }));
+
+        if (goals.length > 0) {
+          await supabase.from('goals').insert(goals);
+
+          for (const goal of formData.goals) {
+            const { data: existing } = await supabase
+              .from('top_scorers')
+              .select('*')
+              .eq('player_name', goal.player);
+
+            if (existing && existing.length > 0) {
+              await supabase
+                .from('top_scorers')
+                .update({ total_goals: existing[0].total_goals + 1 })
+                .eq('player_name', goal.player);
+            } else {
+              await supabase
+                .from('top_scorers')
+                .insert([{ player_name: goal.player, total_goals: 1 }]);
+            }
+          }
+        }
+
+        const pointsForWinner = 3;
+        const pointsForDraw = 1;
+        const pointsForLoser = 0;
+
+        for (const playerName of formData.players1) {
+          let pointsEarned = pointsForLoser;
+          let wins = 0, draws = 0, losses = 0;
+
+          if (winner === 'team1') {
+            pointsEarned = pointsForWinner;
+            wins = 1;
+          } else if (winner === 'draw') {
+            pointsEarned = pointsForDraw;
+            draws = 1;
+          } else {
+            losses = 1;
+          }
+
+          const { data: existing } = await supabase
+            .from('player_stats')
+            .select('*')
+            .eq('player_name', playerName);
+
+          if (existing && existing.length > 0) {
+            const stats = existing[0];
+            await supabase
+              .from('player_stats')
+              .update({
+                games_played: stats.games_played + 1,
+                wins: stats.wins + wins,
+                draws: stats.draws + draws,
+                losses: stats.losses + losses,
+                goals_for: stats.goals_for + score1,
+                goals_against: stats.goals_against + score2,
+                points: stats.points + pointsEarned,
+                updated_at: new Date().toISOString()
+              })
+              .eq('player_name', playerName);
+          }
+
+          await supabase
+            .from('team_points')
+            .insert([{
+              game_id: gameId,
+              player_name: playerName,
+              team: formData.team1,
+              points_earned: pointsEarned
+            }]);
+        }
+
+        for (const playerName of formData.players2) {
+          let pointsEarned = pointsForLoser;
+          let wins = 0, draws = 0, losses = 0;
+
+          if (winner === 'team2') {
+            pointsEarned = pointsForWinner;
+            wins = 1;
+          } else if (winner === 'draw') {
+            pointsEarned = pointsForDraw;
+            draws = 1;
+          } else {
+            losses = 1;
+          }
+
+          const { data: existing } = await supabase
+            .from('player_stats')
+            .select('*')
+            .eq('player_name', playerName);
+
+          if (existing && existing.length > 0) {
+            const stats = existing[0];
+            await supabase
+              .from('player_stats')
+              .update({
+                games_played: stats.games_played + 1,
+                wins: stats.wins + wins,
+                draws: stats.draws + draws,
+                losses: stats.losses + losses,
+                goals_for: stats.goals_for + score2,
+                goals_against: stats.goals_against + score1,
+                points: stats.points + pointsEarned,
+                updated_at: new Date().toISOString()
+              })
+              .eq('player_name', playerName);
+          }
+
+          await supabase
+            .from('team_points')
+            .insert([{
+              game_id: gameId,
+              player_name: playerName,
+              team: formData.team2,
+              points_earned: pointsEarned
+            }]);
+        }
+
+        showNotification(`✅ ${formData.team1} ${score1}:${score2} ${formData.team2}`);
       }
 
       await loadGames();
@@ -443,7 +597,6 @@ export default function FussballManagerPWA() {
       });
       setEditingGame(null);
       setView('home');
-      showNotification(`✅ ${formData.team1} ${score1}:${score2} ${formData.team2}`);
     } catch (err) {
       console.error('Fehler beim Speichern:', err);
       alert('Fehler beim Speichern des Spiels');
