@@ -1,6 +1,6 @@
 /**
- * ⚽ FUSSBALL-MANAGER PWA v3 - MIT PUNKTE-SYSTEM
- * Spieler-Datenbank + Datum + Torschützen + Punkte + Statistiken
+ * ⚽ FUSSBALL-MANAGER PWA v4 - MIT ADMIN-SYSTEM
+ * Admin-Berechtigungen + Edit/Delete + Gelb/Blau Design
  */
 
 import React, { useState, useEffect } from 'react';
@@ -16,7 +16,10 @@ export default function FussballManagerPWA() {
   const [players, setPlayers] = useState([]);
   const [playerStats, setPlayerStats] = useState([]);
   const [topScorers, setTopScorers] = useState([]);
+  const [admins, setAdmins] = useState([]);
+  const [currentUser, setCurrentUser] = useState(null);
   const [newPlayer, setNewPlayer] = useState('');
+  const [editingGame, setEditingGame] = useState(null);
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
     team1: 'Gelb',
@@ -30,11 +33,28 @@ export default function FussballManagerPWA() {
 
   // Daten laden beim Start
   useEffect(() => {
+    loadAdmins();
     loadPlayers();
     loadGames();
     loadPlayerStats();
     loadTopScorers();
   }, []);
+
+  const loadAdmins = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('admins')
+        .select('*');
+      if (error) throw error;
+      setAdmins(data || []);
+    } catch (err) {
+      console.error('Fehler beim Laden der Admins:', err);
+    }
+  };
+
+  const isAdmin = (playerName) => {
+    return admins.some(admin => admin.player_name === playerName);
+  };
 
   const loadPlayers = async () => {
     try {
@@ -98,7 +118,6 @@ export default function FussballManagerPWA() {
         .insert([{ name: newPlayer }]);
       if (error) throw error;
 
-      // Auch in player_stats hinzufügen
       await supabase
         .from('player_stats')
         .insert([{ player_name: newPlayer }]);
@@ -109,6 +128,48 @@ export default function FussballManagerPWA() {
     } catch (err) {
       console.error('Fehler:', err);
       alert('Spieler existiert bereits oder Fehler beim Speichern');
+    }
+  };
+
+  const deletePlayer = async (playerName) => {
+    if (!isAdmin(currentUser)) {
+      alert('Nur Admins können Spieler löschen!');
+      return;
+    }
+
+    if (!confirm(`${playerName} wirklich löschen?`)) return;
+
+    try {
+      await supabase.from('players').delete().eq('name', playerName);
+      await supabase.from('player_stats').delete().eq('player_name', playerName);
+      await loadPlayers();
+      await loadPlayerStats();
+      showNotification(`✅ ${playerName} gelöscht`);
+    } catch (err) {
+      console.error('Fehler beim Löschen:', err);
+      alert('Fehler beim Löschen');
+    }
+  };
+
+  const deleteGame = async (gameId) => {
+    if (!isAdmin(currentUser)) {
+      alert('Nur Admins können Spiele löschen!');
+      return;
+    }
+
+    if (!confirm('Spiel wirklich löschen?')) return;
+
+    try {
+      await supabase.from('games').delete().eq('id', gameId);
+      await supabase.from('goals').delete().eq('game_id', gameId);
+      await supabase.from('game_players').delete().eq('game_id', gameId);
+      await supabase.from('game_results').delete().eq('game_id', gameId);
+      await supabase.from('team_points').delete().eq('game_id', gameId);
+      await loadGames();
+      showNotification('✅ Spiel gelöscht');
+    } catch (err) {
+      console.error('Fehler beim Löschen:', err);
+      alert('Fehler beim Löschen');
     }
   };
 
@@ -148,137 +209,98 @@ export default function FussballManagerPWA() {
     e.preventDefault();
 
     try {
-      const gameId = `game_${Date.now()}`;
+      const gameId = editingGame?.game_id || `game_${Date.now()}`;
       const score1 = parseInt(formData.score1);
       const score2 = parseInt(formData.score2);
 
-      // Bestimme Gewinner
       let winner = 'draw';
       if (score1 > score2) winner = 'team1';
       if (score2 > score1) winner = 'team2';
 
-      // Spiel speichern
-      const { error: gameError } = await supabase
-        .from('games')
-        .insert([{
-          game_id: gameId,
-          date: formData.date,
-          team1: formData.team1,
-          team2: formData.team2,
-          score1: score1,
-          score2: score2
-        }]);
-
-      if (gameError) throw gameError;
-
-      // Game Result speichern
-      await supabase
-        .from('game_results')
-        .insert([{
-          game_id: gameId,
-          team1: formData.team1,
-          team2: formData.team2,
-          score1: score1,
-          score2: score2,
-          winner: winner
-        }]);
-
-      // Spieler zum Spiel hinzufügen
-      const gamePlayers = [
-        ...formData.players1.map(p => ({ game_id: gameId, player_name: p, team: formData.team1 })),
-        ...formData.players2.map(p => ({ game_id: gameId, player_name: p, team: formData.team2 }))
-      ];
-
-      if (gamePlayers.length > 0) {
+      if (editingGame) {
+        // Update existing game
         await supabase
-          .from('game_players')
-          .insert(gamePlayers);
-      }
+          .from('games')
+          .update({
+            date: formData.date,
+            score1: score1,
+            score2: score2
+          })
+          .eq('id', editingGame.id);
 
-      // Tore speichern und Torschützen aktualisieren
-      const goals = formData.goals.map(g => ({
-        game_id: gameId,
-        player_name: g.player,
-        team: g.team
-      }));
+        await supabase
+          .from('game_results')
+          .update({
+            score1: score1,
+            score2: score2,
+            winner: winner
+          })
+          .eq('game_id', gameId);
+      } else {
+        // Create new game
+        const { error: gameError } = await supabase
+          .from('games')
+          .insert([{
+            game_id: gameId,
+            date: formData.date,
+            team1: formData.team1,
+            team2: formData.team2,
+            score1: score1,
+            score2: score2
+          }]);
 
-      if (goals.length > 0) {
-        await supabase.from('goals').insert(goals);
+        if (gameError) throw gameError;
 
-        // Top Scorers aktualisieren
-        for (const goal of formData.goals) {
-          const { data: existing } = await supabase
-            .from('top_scorers')
-            .select('*')
-            .eq('player_name', goal.player);
+        await supabase
+          .from('game_results')
+          .insert([{
+            game_id: gameId,
+            team1: formData.team1,
+            team2: formData.team2,
+            score1: score1,
+            score2: score2,
+            winner: winner
+          }]);
 
-          if (existing && existing.length > 0) {
-            await supabase
+        const gamePlayers = [
+          ...formData.players1.map(p => ({ game_id: gameId, player_name: p, team: formData.team1 })),
+          ...formData.players2.map(p => ({ game_id: gameId, player_name: p, team: formData.team2 }))
+        ];
+
+        if (gamePlayers.length > 0) {
+          await supabase.from('game_players').insert(gamePlayers);
+        }
+
+        const goals = formData.goals.map(g => ({
+          game_id: gameId,
+          player_name: g.player,
+          team: g.team
+        }));
+
+        if (goals.length > 0) {
+          await supabase.from('goals').insert(goals);
+
+          for (const goal of formData.goals) {
+            const { data: existing } = await supabase
               .from('top_scorers')
-              .update({ total_goals: existing[0].total_goals + 1 })
+              .select('*')
               .eq('player_name', goal.player);
-          } else {
-            await supabase
-              .from('top_scorers')
-              .insert([{ player_name: goal.player, total_goals: 1 }]);
+
+            if (existing && existing.length > 0) {
+              await supabase
+                .from('top_scorers')
+                .update({ total_goals: existing[0].total_goals + 1 })
+                .eq('player_name', goal.player);
+            } else {
+              await supabase
+                .from('top_scorers')
+                .insert([{ player_name: goal.player, total_goals: 1 }]);
+            }
           }
         }
       }
 
-      // Punkte berechnen und speichern
-      const pointsToAward = winner === 'draw' ? 1 : winner === 'team1' ? 3 : 0;
-      const team = winner === 'team1' ? formData.team1 : formData.team2;
-      const playersToAward = winner === 'team1' ? formData.players1 : 
-                            winner === 'team2' ? formData.players2 : 
-                            [...formData.players1, ...formData.players2];
-
-      for (const playerName of playersToAward) {
-        const pointsForThisPlayer = (winner === 'draw' || 
-                                    (winner === 'team1' && formData.team1 === team) ||
-                                    (winner === 'team2' && formData.team2 === team)) ? pointsToAward : 0;
-
-        // Team Points speichern
-        await supabase
-          .from('team_points')
-          .insert([{
-            game_id: gameId,
-            player_name: playerName,
-            team: winner === 'team1' ? formData.team1 : winner === 'team2' ? formData.team2 : (formData.players1.includes(playerName) ? formData.team1 : formData.team2),
-            points_earned: pointsForThisPlayer
-          }]);
-
-        // Player Stats aktualisieren
-        const { data: playerData } = await supabase
-          .from('player_stats')
-          .select('*')
-          .eq('player_name', playerName);
-
-        if (playerData && playerData.length > 0) {
-          const stats = playerData[0];
-          const isInTeam1 = formData.players1.includes(playerName);
-          const teamWon = isInTeam1 ? (winner === 'team1') : (winner === 'team2');
-          const teamLost = isInTeam1 ? (winner === 'team2') : (winner === 'team1');
-
-          const newStats = {
-            games_played: stats.games_played + 1,
-            wins: stats.wins + (teamWon ? 1 : 0),
-            draws: stats.draws + (winner === 'draw' ? 1 : 0),
-            losses: stats.losses + (teamLost ? 1 : 0),
-            goals_for: stats.goals_for + (isInTeam1 ? score1 : score2),
-            goals_against: stats.goals_against + (isInTeam1 ? score2 : score1),
-            points: stats.points + pointsForThisPlayer,
-            updated_at: new Date().toISOString()
-          };
-
-          await supabase
-            .from('player_stats')
-            .update(newStats)
-            .eq('player_name', playerName);
-        }
-      }
-
       await loadGames();
-      await loadPlayerStats();
       await loadTopScorers();
       
       setFormData({
@@ -291,6 +313,7 @@ export default function FussballManagerPWA() {
         players2: [],
         goals: []
       });
+      setEditingGame(null);
       setView('home');
       showNotification(`✅ ${formData.team1} ${score1}:${score2} ${formData.team2}`);
     } catch (err) {
@@ -299,11 +322,31 @@ export default function FussballManagerPWA() {
     }
   };
 
+  const startEditGame = (game) => {
+    setEditingGame(game);
+    setFormData({
+      date: game.date.split('T')[0],
+      team1: game.team1,
+      team2: game.team2,
+      score1: game.score1,
+      score2: game.score2,
+      players1: [],
+      players2: [],
+      goals: []
+    });
+    setView('newgame');
+  };
+
   const showNotification = (message) => {
     if ('Notification' in window && Notification.permission === 'granted') {
       new Notification('Fußball-Manager', { body: message });
     }
   };
+
+  // COLORS
+  const GELB = '#fbbf24';
+  const BLAU = '#3b82f6';
+  const GRUEN = '#10b981';
 
   const styles = {
     container: {
@@ -315,10 +358,10 @@ export default function FussballManagerPWA() {
       backgroundImage: 'linear-gradient(135deg, #0f172a 0%, #1a2332 100%)'
     },
     header: {
-      background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+      background: `linear-gradient(135deg, ${GRUEN} 0%, #059669 100%)`,
       padding: '1.5rem 1rem',
       textAlign: 'center',
-      boxShadow: '0 8px 16px rgba(16, 185, 129, 0.2)',
+      boxShadow: `0 8px 16px rgba(16, 185, 129, 0.2)`,
       marginBottom: '1.5rem'
     },
     title: {
@@ -345,12 +388,12 @@ export default function FussballManagerPWA() {
       fontWeight: '600',
       marginBottom: '1rem',
       paddingBottom: '0.75rem',
-      borderBottom: '2px solid #10b981',
+      borderBottom: `2px solid ${GRUEN}`,
       display: 'inline-block'
     },
     card: {
       backgroundColor: 'rgba(255, 255, 255, 0.05)',
-      border: '1px solid rgba(16, 185, 129, 0.2)',
+      border: `1px solid rgba(16, 185, 129, 0.2)`,
       borderRadius: '12px',
       padding: '1.25rem',
       marginBottom: '1rem',
@@ -368,21 +411,25 @@ export default function FussballManagerPWA() {
       marginBottom: '0.75rem'
     },
     buttonPrimary: {
-      background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+      background: `linear-gradient(135deg, ${GRUEN} 0%, #059669 100%)`,
       color: 'white',
-      boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)'
+      boxShadow: `0 4px 12px rgba(16, 185, 129, 0.3)`
     },
     buttonSecondary: {
       background: 'rgba(255, 255, 255, 0.1)',
       color: '#fff',
-      border: '1px solid rgba(16, 185, 129, 0.3)'
+      border: `1px solid rgba(16, 185, 129, 0.3)`
+    },
+    buttonDanger: {
+      background: '#ef4444',
+      color: 'white'
     },
     input: {
       width: '100%',
       padding: '0.75rem',
       marginBottom: '1rem',
       backgroundColor: 'rgba(255, 255, 255, 0.08)',
-      border: '1px solid rgba(16, 185, 129, 0.2)',
+      border: `1px solid rgba(16, 185, 129, 0.2)`,
       borderRadius: '8px',
       color: '#fff',
       fontSize: '1rem',
@@ -393,15 +440,15 @@ export default function FussballManagerPWA() {
       alignItems: 'center',
       padding: '0.75rem',
       backgroundColor: 'rgba(255, 255, 255, 0.05)',
-      border: '1px solid rgba(16, 185, 129, 0.2)',
+      border: `1px solid rgba(16, 185, 129, 0.2)`,
       borderRadius: '8px',
       marginBottom: '0.5rem',
       cursor: 'pointer',
       transition: 'all 0.2s ease'
     },
     checkboxChecked: {
-      backgroundColor: '#10b981',
-      borderColor: '#10b981'
+      backgroundColor: GRUEN,
+      borderColor: GRUEN
     },
     statRow: {
       display: 'flex',
@@ -413,34 +460,7 @@ export default function FussballManagerPWA() {
     },
     statValue: {
       fontWeight: '600',
-      color: '#10b981'
-    },
-    badgeGold: {
-      display: 'inline-block',
-      backgroundColor: '#fbbf24',
-      color: '#000',
-      padding: '0.25rem 0.75rem',
-      borderRadius: '20px',
-      fontSize: '0.8rem',
-      fontWeight: '600'
-    },
-    badgeSilver: {
-      display: 'inline-block',
-      backgroundColor: '#d1d5db',
-      color: '#000',
-      padding: '0.25rem 0.75rem',
-      borderRadius: '20px',
-      fontSize: '0.8rem',
-      fontWeight: '600'
-    },
-    badgeBronze: {
-      display: 'inline-block',
-      backgroundColor: '#d97706',
-      color: '#fff',
-      padding: '0.25rem 0.75rem',
-      borderRadius: '20px',
-      fontSize: '0.8rem',
-      fontWeight: '600'
+      color: GRUEN
     },
     bottomNav: {
       position: 'fixed',
@@ -452,7 +472,7 @@ export default function FussballManagerPWA() {
       gap: '0.5rem',
       padding: '0.5rem',
       backgroundColor: 'rgba(15, 23, 42, 0.95)',
-      borderTop: '1px solid rgba(16, 185, 129, 0.2)',
+      borderTop: `1px solid rgba(16, 185, 129, 0.2)`,
       backdropFilter: 'blur(10px)',
       maxWidth: '500px',
       margin: '0 auto',
@@ -471,9 +491,44 @@ export default function FussballManagerPWA() {
       transition: 'all 0.2s ease'
     },
     navButtonActive: {
-      color: '#10b981'
+      color: GRUEN
     }
   };
+
+  // ============= ADMIN SELECTOR =============
+  if (!currentUser) {
+    return (
+      <div style={styles.container}>
+        <header style={styles.header}>
+          <h1 style={styles.title}>⚽ Manager</h1>
+          <p style={styles.subtitle}>Wer bist du?</p>
+        </header>
+
+        <div style={styles.content}>
+          <div style={styles.section}>
+            <h2 style={styles.sectionTitle}>Spieler auswählen</h2>
+            <div style={styles.card}>
+              {players.map((player) => (
+                <button
+                  key={player.id}
+                  onClick={() => setCurrentUser(player.name)}
+                  style={{
+                    ...styles.button,
+                    ...styles.buttonSecondary,
+                    marginBottom: '0.5rem',
+                    background: isAdmin(player.name) ? `linear-gradient(135deg, ${GELB} 0%, ${BLAU} 100%)` : 'rgba(255, 255, 255, 0.1)',
+                    color: isAdmin(player.name) ? '#000' : '#fff'
+                  }}
+                >
+                  {player.name} {isAdmin(player.name) ? '👑' : ''}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // ============= HOME VIEW =============
   if (view === 'home') {
@@ -481,7 +536,7 @@ export default function FussballManagerPWA() {
       <div style={styles.container}>
         <header style={styles.header}>
           <h1 style={styles.title}>⚽ Manager</h1>
-          <p style={styles.subtitle}>Spiele & Statistiken</p>
+          <p style={styles.subtitle}>{currentUser} {isAdmin(currentUser) ? '👑' : ''}</p>
         </header>
 
         <div style={styles.content}>
@@ -491,6 +546,12 @@ export default function FussballManagerPWA() {
             </button>
             <button style={{...styles.button, ...styles.buttonSecondary}} onClick={() => setView('players')}>
               👥 Spieler verwalten
+            </button>
+            <button 
+              style={{...styles.button, ...styles.buttonSecondary}} 
+              onClick={() => setCurrentUser(null)}
+            >
+              🔀 Benutzer wechseln
             </button>
           </div>
 
@@ -522,13 +583,31 @@ export default function FussballManagerPWA() {
 
                 return (
                   <div key={game.id} style={{...styles.card, padding: '1rem', marginBottom: '0.75rem'}}>
-                    <div style={{fontSize: '0.8rem', color: '#6b7280', marginBottom: '0.5rem'}}>{dateStr}</div>
+                    <div style={{fontSize: '0.8rem', color: '#6b7280', marginBottom: '0.5rem'}}>
+                      {dateStr}
+                      {isAdmin(currentUser) && (
+                        <div style={{marginTop: '0.5rem', display: 'flex', gap: '0.5rem'}}>
+                          <button
+                            onClick={() => startEditGame(game)}
+                            style={{...styles.button, ...styles.buttonSecondary, padding: '0.25rem 0.75rem', fontSize: '0.8rem', marginBottom: 0, width: 'auto'}}
+                          >
+                            ✏️ Edit
+                          </button>
+                          <button
+                            onClick={() => deleteGame(game.id)}
+                            style={{...styles.button, ...styles.buttonDanger, padding: '0.25rem 0.75rem', fontSize: '0.8rem', marginBottom: 0, width: 'auto'}}
+                          >
+                            🗑️ Löschen
+                          </button>
+                        </div>
+                      )}
+                    </div>
                     <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-                      <span>{game.team1}</span>
-                      <span style={{fontSize: '1.5rem', fontWeight: 'bold', color: '#10b981'}}>
+                      <span style={{color: GELB}}>{game.team1}</span>
+                      <span style={{fontSize: '1.5rem', fontWeight: 'bold', color: GRUEN}}>
                         {game.score1}:{game.score2}
                       </span>
-                      <span>{game.team2}</span>
+                      <span style={{color: BLAU}}>{game.team2}</span>
                     </div>
                   </div>
                 );
@@ -560,13 +639,13 @@ export default function FussballManagerPWA() {
     return (
       <div style={styles.container}>
         <header style={styles.header}>
-          <h1 style={styles.title}>⚽ Neues Spiel</h1>
+          <h1 style={styles.title}>⚽ {editingGame ? 'Spiel bearbeiten' : 'Neues Spiel'}</h1>
         </header>
 
         <div style={styles.content}>
           <form onSubmit={handleNewGame} style={{marginBottom: '1rem'}}>
             <div style={styles.section}>
-              <label style={{display: 'block', fontSize: '0.9rem', marginBottom: '0.5rem', color: '#10b981'}}>
+              <label style={{display: 'block', fontSize: '0.9rem', marginBottom: '0.5rem', color: GRUEN}}>
                 📅 Datum
               </label>
               <input
@@ -580,7 +659,7 @@ export default function FussballManagerPWA() {
 
             {/* Team 1 - GELB */}
             <div style={styles.section}>
-              <label style={{display: 'block', fontSize: '0.9rem', marginBottom: '0.5rem', color: '#fbbf24'}}>
+              <label style={{display: 'block', fontSize: '0.9rem', marginBottom: '0.5rem', color: GELB}}>
                 👥 GELB ({formData.players1.length})
               </label>
               <div style={{...styles.card, padding: '0.75rem'}}>
@@ -608,7 +687,7 @@ export default function FussballManagerPWA() {
             {/* Score */}
             <div style={{display: 'flex', gap: '1rem', marginBottom: '1rem'}}>
               <div style={{flex: 1}}>
-                <label style={{display: 'block', fontSize: '0.9rem', marginBottom: '0.5rem', color: '#fbbf24'}}>
+                <label style={{display: 'block', fontSize: '0.9rem', marginBottom: '0.5rem', color: GELB}}>
                   Tore
                 </label>
                 <input
@@ -620,7 +699,7 @@ export default function FussballManagerPWA() {
                 />
               </div>
               <div style={{flex: 1}}>
-                <label style={{display: 'block', fontSize: '0.9rem', marginBottom: '0.5rem', color: '#3b82f6'}}>
+                <label style={{display: 'block', fontSize: '0.9rem', marginBottom: '0.5rem', color: BLAU}}>
                   Tore
                 </label>
                 <input
@@ -635,7 +714,7 @@ export default function FussballManagerPWA() {
 
             {/* Team 2 - BLAU */}
             <div style={styles.section}>
-              <label style={{display: 'block', fontSize: '0.9rem', marginBottom: '0.5rem', color: '#3b82f6'}}>
+              <label style={{display: 'block', fontSize: '0.9rem', marginBottom: '0.5rem', color: BLAU}}>
                 👥 BLAU ({formData.players2.length})
               </label>
               <div style={{...styles.card, padding: '0.75rem'}}>
@@ -662,13 +741,13 @@ export default function FussballManagerPWA() {
 
             {/* Torschützen */}
             <div style={styles.section}>
-              <label style={{display: 'block', fontSize: '0.9rem', marginBottom: '0.5rem', color: '#10b981'}}>
+              <label style={{display: 'block', fontSize: '0.9rem', marginBottom: '0.5rem', color: GRUEN}}>
                 ⚽ Torschützen ({formData.goals.length})
               </label>
 
               {formData.players1.length > 0 && (
                 <div style={{marginBottom: '1rem'}}>
-                  <div style={{fontSize: '0.85rem', color: '#fbbf24', marginBottom: '0.5rem', fontWeight: '600'}}>
+                  <div style={{fontSize: '0.85rem', color: GELB, marginBottom: '0.5rem', fontWeight: '600'}}>
                     GELB:
                   </div>
                   <div style={{...styles.card, padding: '0.75rem'}}>
@@ -694,7 +773,7 @@ export default function FussballManagerPWA() {
 
               {formData.players2.length > 0 && (
                 <div style={{marginBottom: '1rem'}}>
-                  <div style={{fontSize: '0.85rem', color: '#3b82f6', marginBottom: '0.5rem', fontWeight: '600'}}>
+                  <div style={{fontSize: '0.85rem', color: BLAU, marginBottom: '0.5rem', fontWeight: '600'}}>
                     BLAU:
                   </div>
                   <div style={{...styles.card, padding: '0.75rem'}}>
@@ -720,7 +799,7 @@ export default function FussballManagerPWA() {
 
               {formData.goals.length > 0 && (
                 <div style={{marginTop: '1rem'}}>
-                  <div style={{fontSize: '0.85rem', color: '#10b981', marginBottom: '0.5rem', fontWeight: '600'}}>
+                  <div style={{fontSize: '0.85rem', color: GRUEN, marginBottom: '0.5rem', fontWeight: '600'}}>
                     Erfasste Tore:
                   </div>
                   {formData.goals.map((goal, idx) => (
@@ -736,9 +815,9 @@ export default function FussballManagerPWA() {
             </div>
 
             <button type="submit" style={{...styles.button, ...styles.buttonPrimary}}>
-              ✅ Spiel speichern
+              ✅ {editingGame ? 'Aktualisieren' : 'Speichern'}
             </button>
-            <button type="button" style={{...styles.button, ...styles.buttonSecondary}} onClick={() => setView('home')}>
+            <button type="button" style={{...styles.button, ...styles.buttonSecondary}} onClick={() => {setView('home'); setEditingGame(null);}}>
               Abbrechen
             </button>
           </form>
@@ -812,7 +891,7 @@ export default function FussballManagerPWA() {
                 topScorers.map((scorer, idx) => (
                   <div key={idx} style={{...styles.statRow, paddingTop: idx === 0 ? '0.75rem' : '0.75rem'}}>
                     <div>
-                      <span style={{marginRight: '0.5rem', marginRight: '0.75rem'}}>
+                      <span style={{marginRight: '0.75rem'}}>
                         {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `${idx + 1}.`}
                       </span>
                       {scorer.player_name}
@@ -847,7 +926,7 @@ export default function FussballManagerPWA() {
         <div style={styles.content}>
           <form onSubmit={handleAddPlayer} style={{marginBottom: '1.5rem'}}>
             <div style={styles.section}>
-              <label style={{display: 'block', fontSize: '0.9rem', marginBottom: '0.5rem', color: '#10b981'}}>
+              <label style={{display: 'block', fontSize: '0.9rem', marginBottom: '0.5rem', color: GRUEN}}>
                 Neuen Spieler hinzufügen
               </label>
               <input
@@ -867,8 +946,25 @@ export default function FussballManagerPWA() {
             <h2 style={styles.sectionTitle}>📋 Alle Spieler ({players.length})</h2>
             <div style={styles.card}>
               {players.map((player) => (
-                <div key={player.id} style={{padding: '0.75rem', borderBottom: '1px solid rgba(16, 185, 129, 0.1)'}}>
-                  {player.name}
+                <div key={player.id} style={{...styles.statRow, paddingTop: '0.5rem', paddingBottom: '0.5rem'}}>
+                  <div>
+                    {player.name}
+                    {isAdmin(player.name) && <span style={{marginLeft: '0.5rem'}}>👑</span>}
+                  </div>
+                  {isAdmin(currentUser) && (
+                    <button
+                      onClick={() => deletePlayer(player.name)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#ef4444',
+                        cursor: 'pointer',
+                        fontSize: '1.2rem'
+                      }}
+                    >
+                      🗑️
+                    </button>
+                  )}
                 </div>
               ))}
               {players.length === 0 && (
