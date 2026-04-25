@@ -18,6 +18,7 @@ export default function FussballManagerPWA() {
   const [players, setPlayers] = useState([]);
   const [playerStats, setPlayerStats] = useState([]);
   const [topScorers, setTopScorers] = useState([]);
+  const [teamBilanz, setTeamBilanz] = useState([]);
   const [admins, setAdmins] = useState([]);
   const [isAdminMode, setIsAdminMode] = useState(false);
   const [adminPassword, setAdminPassword] = useState('');
@@ -43,7 +44,8 @@ export default function FussballManagerPWA() {
     loadGames();
     loadPlayerStats();
     loadTopScorers();
-  }, []);
+    calculateTeamBilanz();
+  }, [games]);
 
   const loadAdmins = async () => {
     try {
@@ -57,8 +59,48 @@ export default function FussballManagerPWA() {
     }
   };
 
-  const isAdminUser = (playerName) => {
-    return admins.some(admin => admin.player_name === playerName);
+  const calculateTeamBilanz = () => {
+    // Berechne Spieler-Paare und deren Erfolgsquote
+    const pairingMap = {};
+
+    games.forEach(game => {
+      const { team1, team2, score1, score2 } = game;
+      
+      // Finde Spieler in diesem Spiel
+      const gamePlayersData = players; // Wir nutzen die loaded players
+      
+      // Team 1 vs Team 2 Pairing
+      // Hier vereinfacht: Zähle einfach wie oft die Teams gegeneinander spielten
+      const pairingKey = [team1, team2].sort().join(' vs ');
+      
+      if (!pairingMap[pairingKey]) {
+        pairingMap[pairingKey] = {
+          team1,
+          team2,
+          games: 0,
+          team1Wins: 0,
+          team2Wins: 0,
+          draws: 0,
+          team1Goals: 0,
+          team2Goals: 0
+        };
+      }
+
+      pairingMap[pairingKey].games += 1;
+      pairingMap[pairingKey].team1Goals += score1;
+      pairingMap[pairingKey].team2Goals += score2;
+
+      if (score1 > score2) {
+        pairingMap[pairingKey].team1Wins += 1;
+      } else if (score2 > score1) {
+        pairingMap[pairingKey].team2Wins += 1;
+      } else {
+        pairingMap[pairingKey].draws += 1;
+      }
+    });
+
+    const bilanzArray = Object.values(pairingMap).sort((a, b) => b.games - a.games);
+    setTeamBilanz(bilanzArray);
   };
 
   const handleAdminLogin = (password) => {
@@ -1257,6 +1299,98 @@ export default function FussballManagerPWA() {
     );
   }
 
+  // ============= TEAM BILANZ VIEW =============
+  if (view === 'teambilanz') {
+    return (
+      <div style={styles.container}>
+        <header style={styles.header}>
+          <button 
+            style={styles.backButton}
+            onClick={() => setView('home')}
+          >
+            ↩️
+          </button>
+          <div style={styles.headerTitle}>
+            <h1 style={styles.title}>👥 Team-Bilanz</h1>
+          </div>
+          <div></div>
+        </header>
+
+        <div style={styles.content}>
+          <div style={styles.section}>
+            <h2 style={styles.sectionTitle}>Kopf-an-Kopf Statistik</h2>
+            <div style={styles.card}>
+              {teamBilanz.length > 0 ? (
+                <>
+                  {teamBilanz.map((pairing, idx) => {
+                    const totalGames = pairing.games;
+                    const team1WinRate = totalGames > 0 ? ((pairing.team1Wins / totalGames) * 100).toFixed(1) : '0.0';
+                    const team2WinRate = totalGames > 0 ? ((pairing.team2Wins / totalGames) * 100).toFixed(1) : '0.0';
+                    
+                    return (
+                      <div key={idx} style={{...styles.card, marginBottom: '1rem', padding: '1rem', backgroundColor: 'rgba(16, 185, 129, 0.05)'}}>
+                        <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem'}}>
+                          <div style={{textAlign: 'center', flex: 1}}>
+                            <div style={{fontSize: '1.1rem', fontWeight: '600', color: GELB}}>
+                              {pairing.team1}
+                            </div>
+                            <div style={{fontSize: '0.85rem', color: '#9ca3af', marginTop: '0.25rem'}}>
+                              {pairing.team1Wins} Siege ({team1WinRate}%)
+                            </div>
+                          </div>
+                          <div style={{textAlign: 'center', padding: '0 1rem', borderLeft: `1px solid rgba(16, 185, 129, 0.2)`, borderRight: `1px solid rgba(16, 185, 129, 0.2)`}}>
+                            <div style={{fontSize: '1.2rem', fontWeight: 'bold', color: GRUEN}}>
+                              {pairing.games}x
+                            </div>
+                            <div style={{fontSize: '0.8rem', color: '#9ca3af', marginTop: '0.25rem'}}>
+                              Spiele
+                            </div>
+                          </div>
+                          <div style={{textAlign: 'center', flex: 1}}>
+                            <div style={{fontSize: '1.1rem', fontWeight: '600', color: BLAU}}>
+                              {pairing.team2}
+                            </div>
+                            <div style={{fontSize: '0.85rem', color: '#9ca3af', marginTop: '0.25rem'}}>
+                              {pairing.team2Wins} Siege ({team2WinRate}%)
+                            </div>
+                          </div>
+                        </div>
+                        <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.85rem', color: '#9ca3af', paddingTop: '0.75rem', borderTop: `1px solid rgba(16, 185, 129, 0.1)`}}>
+                          <div>Tore: {pairing.team1Goals}</div>
+                          <div>Unentschieden: {pairing.draws}</div>
+                          <div>Tore: {pairing.team2Goals}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </>
+              ) : (
+                <div style={{color: '#6b7280', textAlign: 'center', padding: '1rem'}}>
+                  Keine Daten vorhanden
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <nav style={styles.bottomNav}>
+          <button style={{...styles.navButton, ...styles.navButtonActive}} onClick={() => setView('home')}>
+            🏠 Home
+          </button>
+          <button style={{...styles.navButton}} onClick={() => setView('stats')}>
+            📊 Tabelle
+          </button>
+          <button style={{...styles.navButton}} onClick={() => setView('scorers')}>
+            ⚽ Tore
+          </button>
+          <button style={{...styles.navButton}} onClick={() => setView('teambilanz')}>
+            👥 Teams
+          </button>
+        </nav>
+      </div>
+    );
+  }
+
   // ============= STATS VIEW =============
   if (view === 'stats') {
     return (
@@ -1372,8 +1506,8 @@ export default function FussballManagerPWA() {
           <button style={{...styles.navButton}} onClick={() => setView('scorers')}>
             ⚽ Tore
           </button>
-          <button style={{...styles.navButton}} onClick={() => setView('home')}>
-            📅 Historie
+          <button style={{...styles.navButton}} onClick={() => setView('teambilanz')}>
+            👥 Teams
           </button>
         </nav>
       </div>
@@ -1432,8 +1566,8 @@ export default function FussballManagerPWA() {
           <button style={{...styles.navButton}} onClick={() => setView('scorers')}>
             ⚽ Tore
           </button>
-          <button style={{...styles.navButton}} onClick={() => setView('home')}>
-            📅 Historie
+          <button style={{...styles.navButton}} onClick={() => setView('teambilanz')}>
+            👥 Teams
           </button>
         </nav>
       </div>
