@@ -1,12 +1,11 @@
 /**
- * FUSSBALL-MANAGER PWA v14.1 - UI FIX
- * Navigation oben + Back-Button als << + Design-Optimierung
+ * FUSSBALL-MANAGER PWA v14.1 - TOP NAVIGATION FIX
+ * Navigation oben mit Buttons + Back-Button << + Design optimiert
  */
 
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
-/* ─── SUPABASE CONFIG ─── */
 const SUPABASE_URL = 'https://sdtgwkvmqprbwvtkswxd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_iCVXxm3VuPQIHEvWkkqqPw_1jCVn0QO';
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -14,7 +13,6 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 const ADMIN_PASSWORD = '1qay2wsx!Admin';
 
 export default function FussballManagerPWA() {
-  /* ─── STATE ─── */
   const [view, setView] = useState('home');
   const [games, setGames] = useState([]);
   const [players, setPlayers] = useState([]);
@@ -43,7 +41,6 @@ export default function FussballManagerPWA() {
     goals: [],
   });
 
-  /* ─── INITIAL LOAD ─── */
   useEffect(() => {
     loadAdmins();
     loadPlayers();
@@ -54,14 +51,13 @@ export default function FussballManagerPWA() {
     calculateTeamBilanz();
   }, [games]);
 
-  /* ─── DATA LOADING ─── */
   const loadAdmins = async () => {
     try {
       const { data, error } = await supabase.from('admins').select('*');
       if (error) throw error;
       setAdmins(data || []);
     } catch (err) {
-      console.error('Fehler beim Laden der Admins:', err);
+      console.error('Fehler:', err);
     }
   };
 
@@ -71,7 +67,7 @@ export default function FussballManagerPWA() {
       if (error) throw error;
       setPlayerPositions(data || []);
     } catch (err) {
-      console.error('Fehler beim Laden der Positionen:', err);
+      console.error('Fehler:', err);
     }
   };
 
@@ -81,50 +77,40 @@ export default function FussballManagerPWA() {
       if (error) throw error;
       setPlayers(data || []);
     } catch (err) {
-      console.error('Fehler beim Laden der Spieler:', err);
+      console.error('Fehler:', err);
     }
   };
 
   const loadGames = async () => {
     try {
-      const { data, error } = await supabase
-        .from('games')
-        .select('*')
-        .order('date', { ascending: false });
+      const { data, error } = await supabase.from('games').select('*').order('date', { ascending: false });
       if (error) throw error;
       setGames(data || []);
     } catch (err) {
-      console.error('Fehler beim Laden der Spiele:', err);
+      console.error('Fehler:', err);
     }
   };
 
   const loadPlayerStats = async () => {
     try {
-      const { data, error } = await supabase
-        .from('player_stats')
-        .select('*')
-        .order('points', { ascending: false });
+      const { data, error } = await supabase.from('player_stats').select('*').order('points', { ascending: false });
       if (error) throw error;
       setPlayerStats(data || []);
     } catch (err) {
-      console.error('Fehler beim Laden der Statistiken:', err);
+      console.error('Fehler:', err);
     }
   };
 
   const loadTopScorers = async () => {
     try {
-      const { data, error } = await supabase
-        .from('top_scorers')
-        .select('*')
-        .order('total_goals', { ascending: false });
+      const { data, error } = await supabase.from('top_scorers').select('*').order('total_goals', { ascending: false });
       if (error) throw error;
       setTopScorers(data || []);
     } catch (err) {
-      console.error('Fehler beim Laden der Torschützen:', err);
+      console.error('Fehler:', err);
     }
   };
 
-  /* ─── POSITIONS LOGIC ─── */
   const savePlayerPosition = async (playerName, sturm, mittelfeld, abwehr) => {
     try {
       const { data: existing } = await supabase
@@ -156,7 +142,7 @@ export default function FussballManagerPWA() {
       await loadPlayerPositions();
       showNotification(`✅ ${playerName} Positionen aktualisiert`);
     } catch (err) {
-      console.error('Fehler beim Speichern der Position:', err);
+      console.error('Fehler:', err);
       alert('Fehler beim Speichern');
     }
   };
@@ -172,7 +158,6 @@ export default function FussballManagerPWA() {
       : { sturm: 5, mittelfeld: 5, abwehr: 5 };
   };
 
-  /* ─── STATS CALCULATIONS ─── */
   const calculatePlayerStats = (playerName) => {
     const playerGames = games.filter((g) => {
       const { data: gamePlayers } = supabase
@@ -224,7 +209,6 @@ export default function FussballManagerPWA() {
     return (stat.goals_for / stat.games_played).toFixed(2);
   };
 
-  /* ─── TEAM GENERATOR ─── */
   const generateBalancedTeams = () => {
     if (players.length < 2) {
       alert('Mindestens 2 Spieler erforderlich!');
@@ -258,7 +242,6 @@ export default function FussballManagerPWA() {
     showNotification('✅ Teams generiert!');
   };
 
-  /* ─── TEAM BILANZ ─── */
   const calculateTeamBilanz = () => {
     const pairingMap = {};
 
@@ -292,7 +275,6 @@ export default function FussballManagerPWA() {
     setTeamBilanz(bilanzArray);
   };
 
-  /* ─── ADMIN AUTH ─── */
   const handleAdminLogin = (password) => {
     if (password === ADMIN_PASSWORD) {
       setIsAdminMode(true);
@@ -305,7 +287,6 @@ export default function FussballManagerPWA() {
     }
   };
 
-  /* ─── PLAYER MANAGEMENT ─── */
   const handleAddPlayer = async (e) => {
     e.preventDefault();
     if (!isAdminMode) {
@@ -361,7 +342,7 @@ export default function FussballManagerPWA() {
       await loadTopScorers();
       showNotification(`✅ ${oldName} → ${newPlayerName}`);
     } catch (err) {
-      console.error('Fehler beim Umbenennen:', err);
+      console.error('Fehler:', err);
       alert('Fehler beim Umbenennen');
     }
   };
@@ -382,12 +363,11 @@ export default function FussballManagerPWA() {
       await loadPlayerPositions();
       showNotification(`✅ ${playerName} gelöscht`);
     } catch (err) {
-      console.error('Fehler beim Löschen:', err);
+      console.error('Fehler:', err);
       alert('Fehler beim Löschen');
     }
   };
 
-  /* ─── GAME MANAGEMENT ─── */
   const deleteGame = async (gameId, gameIdStr) => {
     if (!isAdminMode) {
       alert('Nur Admins können Spiele löschen!');
@@ -404,7 +384,7 @@ export default function FussballManagerPWA() {
       await loadGames();
       showNotification('✅ Spiel gelöscht');
     } catch (err) {
-      console.error('Fehler beim Löschen:', err);
+      console.error('Fehler:', err);
       alert('Fehler beim Löschen');
     }
   };
@@ -484,7 +464,7 @@ export default function FussballManagerPWA() {
 
       await supabase.from('team_points').delete().eq('game_id', gameId);
     } catch (err) {
-      console.error('❌ FEHLER beim Rollback:', err);
+      console.error('Fehler:', err);
       throw err;
     }
   };
@@ -664,7 +644,7 @@ export default function FussballManagerPWA() {
           : `✅ ${formData.team1} ${score1}:${score2} ${formData.team2}`
       );
     } catch (err) {
-      console.error('Fehler beim Speichern:', err);
+      console.error('Fehler:', err);
       alert('Fehler beim Speichern des Spiels');
     }
   };
@@ -688,26 +668,23 @@ export default function FussballManagerPWA() {
     setView('newgame');
   };
 
-  /* ─── NOTIFICATIONS ─── */
   const showNotification = (message) => {
     if ('Notification' in window && Notification.permission === 'granted') {
       new Notification('Fußball-Manager', { body: message });
     }
   };
 
-  /* ─── COLORS ─── */
   const GELB = '#fbbf24';
   const BLAU = '#3b82f6';
   const GRUEN = '#10b981';
 
-  /* ─── STYLES ─── */
   const styles = {
     container: {
       minHeight: '100vh',
       backgroundColor: '#0f172a',
       color: '#fff',
       fontFamily: '"Segoe UI", Tahoma, Geneva, sans-serif',
-      paddingTop: '70px',
+      paddingTop: '140px',
       paddingBottom: '20px',
       backgroundImage: 'linear-gradient(135deg, #0f172a 0%, #1a2332 100%)',
     },
@@ -717,46 +694,63 @@ export default function FussballManagerPWA() {
       left: 0,
       right: 0,
       background: `linear-gradient(135deg, ${GRUEN} 0%, #059669 100%)`,
-      padding: '1rem 1rem',
+      padding: '0.75rem 1rem',
       boxShadow: `0 8px 16px rgba(16, 185, 129, 0.2)`,
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center',
       zIndex: 100,
       maxWidth: '500px',
       margin: '0 auto',
       width: '100%',
       boxSizing: 'border-box',
     },
-    navTitle: {
-      flex: 1,
-      textAlign: 'center',
+    topNavInner: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      gap: '0.5rem',
     },
     backButton: {
-      background: 'rgba(255, 255, 255, 0.2)',
-      border: 'none',
-      color: '#fff',
-      padding: '0.5rem 1rem',
-      borderRadius: '6px',
-      cursor: 'pointer',
-      fontSize: '1.5rem',
-      fontWeight: 'bold',
-    },
-    adminButton: {
       background: 'rgba(255, 255, 255, 0.2)',
       border: 'none',
       color: '#fff',
       padding: '0.5rem 0.75rem',
       borderRadius: '6px',
       cursor: 'pointer',
-      fontSize: '1.2rem',
+      fontSize: '1.3rem',
       fontWeight: 'bold',
+      minWidth: '45px',
+      textAlign: 'center',
     },
-    title: {
-      fontSize: '1.8rem',
-      margin: 0,
+    navButtons: {
+      display: 'flex',
+      gap: '0.5rem',
+      flex: 1,
+      overflowX: 'auto',
+    },
+    navButton: {
+      background: 'rgba(255, 255, 255, 0.2)',
+      border: 'none',
+      color: '#fff',
+      padding: '0.5rem 0.75rem',
+      borderRadius: '6px',
+      cursor: 'pointer',
+      fontSize: '0.75rem',
+      fontWeight: '600',
+      whiteSpace: 'nowrap',
+      flex: '0 0 auto',
+    },
+    navButtonActive: {
+      background: 'rgba(255, 255, 255, 0.4)',
+      color: '#fff',
+    },
+    adminButton: {
+      background: 'rgba(255, 255, 255, 0.2)',
+      border: 'none',
+      color: '#fff',
+      padding: '0.5rem 0.6rem',
+      borderRadius: '6px',
+      cursor: 'pointer',
+      fontSize: '1rem',
       fontWeight: 'bold',
-      textShadow: '0 2px 4px rgba(0,0,0,0.2)',
     },
     content: {
       maxWidth: '500px',
@@ -855,7 +849,6 @@ export default function FussballManagerPWA() {
     },
   };
 
-  /* ─── SUB-COMPONENTS ─── */
   const AdminLoginModal = () => (
     <div style={{
       position: 'fixed',
@@ -897,44 +890,81 @@ export default function FussballManagerPWA() {
 
   const TopNav = () => (
     <div style={styles.topNav}>
-      {view !== 'home' ? (
-        <button
-          style={styles.backButton}
-          onClick={() => {
-            setView('home');
-            setEditingGame(null);
-          }}
-          title="Zurück"
-        >
-          &lt;&lt;
-        </button>
-      ) : (
-        <div />
-      )}
-      <div style={styles.navTitle}>
-        <h1 style={styles.title}>⚽ Manager</h1>
+      <div style={styles.topNavInner}>
+        {view !== 'home' ? (
+          <button
+            style={styles.backButton}
+            onClick={() => {
+              setView('home');
+              setEditingGame(null);
+            }}
+            title="Zurück"
+          >
+            &lt;&lt;
+          </button>
+        ) : (
+          <div style={{ minWidth: '45px' }} />
+        )}
+        
+        <div style={styles.navButtons}>
+          <button
+            style={{
+              ...styles.navButton,
+              ...(view === 'home' ? styles.navButtonActive : {}),
+            }}
+            onClick={() => { setView('home'); setEditingGame(null); }}
+          >
+            🏠 Home
+          </button>
+          <button
+            style={{
+              ...styles.navButton,
+              ...(view === 'stats' ? styles.navButtonActive : {}),
+            }}
+            onClick={() => setView('stats')}
+          >
+            📊 Tabelle
+          </button>
+          <button
+            style={{
+              ...styles.navButton,
+              ...(view === 'scorers' ? styles.navButtonActive : {}),
+            }}
+            onClick={() => setView('scorers')}
+          >
+            ⚽ Tore
+          </button>
+          <button
+            style={{
+              ...styles.navButton,
+              ...(view === 'statspro' ? styles.navButtonActive : {}),
+            }}
+            onClick={() => setView('statspro')}
+          >
+            ⭐ Pro
+          </button>
+        </div>
+
+        {view === 'home' && (
+          <button
+            style={styles.adminButton}
+            onClick={() => {
+              if (isAdminMode) {
+                setIsAdminMode(false);
+                showNotification('❌ Admin-Mode deaktiviert');
+              } else {
+                setShowAdminLogin(true);
+              }
+            }}
+            title={isAdminMode ? 'Admin-Mode AUS' : 'Admin-Mode AN'}
+          >
+            {isAdminMode ? '🔐' : '🔓'}
+          </button>
+        )}
       </div>
-      {view === 'home' && (
-        <button
-          style={styles.adminButton}
-          onClick={() => {
-            if (isAdminMode) {
-              setIsAdminMode(false);
-              showNotification('❌ Admin-Mode deaktiviert');
-            } else {
-              setShowAdminLogin(true);
-            }
-          }}
-          title={isAdminMode ? 'Admin-Mode AUS' : 'Admin-Mode AN'}
-        >
-          {isAdminMode ? '🔐' : '🔓'}
-        </button>
-      )}
-      {view !== 'home' && <div />}
     </div>
   );
 
-  /* ─── VIEW: HOME ─── */
   if (view === 'home') {
     return (
       <div style={styles.container}>
@@ -997,31 +1027,27 @@ export default function FussballManagerPWA() {
           )}
 
           <div style={styles.section}>
-            <h2 style={styles.sectionTitle}>📊 Statistiken</h2>
+            <h2 style={styles.sectionTitle}>📊 Quick Stats</h2>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-              <button
-                style={{ ...styles.button, ...styles.buttonSecondary, marginBottom: 0 }}
-                onClick={() => setView('stats')}
-              >
-                📊 Tabelle
-                <br />
-                <span style={{ fontSize: '0.8rem', color: '#9ca3af' }}>({playerStats.length})</span>
-              </button>
-              <button
-                style={{ ...styles.button, ...styles.buttonSecondary, marginBottom: 0 }}
-                onClick={() => setView('scorers')}
-              >
-                ⚽ Tore
-                <br />
-                <span style={{ fontSize: '0.8rem', color: '#9ca3af' }}>({topScorers.length})</span>
-              </button>
+              <div style={{ ...styles.card, marginBottom: 0, padding: '1rem', textAlign: 'center' }}>
+                <div style={{ fontSize: '2rem', fontWeight: 'bold', color: GRUEN }}>
+                  {playerStats.length}
+                </div>
+                <div style={{ fontSize: '0.85rem', color: '#9ca3af' }}>Spieler</div>
+              </div>
+              <div style={{ ...styles.card, marginBottom: 0, padding: '1rem', textAlign: 'center' }}>
+                <div style={{ fontSize: '2rem', fontWeight: 'bold', color: GRUEN }}>
+                  {games.length}
+                </div>
+                <div style={{ fontSize: '0.85rem', color: '#9ca3af' }}>Spiele</div>
+              </div>
             </div>
           </div>
 
           {games.length > 0 && (
             <div style={styles.section}>
-              <h2 style={styles.sectionTitle}>📅 Historie</h2>
-              {games.slice(0, 5).map((game) => {
+              <h2 style={styles.sectionTitle}>📅 Letzte Spiele</h2>
+              {games.slice(0, 3).map((game) => {
                 const date = new Date(game.date);
                 const dateStr = date.toLocaleDateString('de-DE');
                 return (
@@ -1054,17 +1080,17 @@ export default function FussballManagerPWA() {
                               width: 'auto',
                             }}
                           >
-                            🗑️ Löschen
+                            🗑️
                           </button>
                         </div>
                       )}
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ color: GELB }}>{game.team1}</span>
+                      <span style={{ color: GELB, fontSize: '0.9rem' }}>{game.team1}</span>
                       <span style={{ fontSize: '1.5rem', fontWeight: 'bold', color: GRUEN }}>
                         {game.score1}:{game.score2}
                       </span>
-                      <span style={{ color: BLAU }}>{game.team2}</span>
+                      <span style={{ color: BLAU, fontSize: '0.9rem' }}>{game.team2}</span>
                     </div>
                   </div>
                 );
@@ -1076,7 +1102,6 @@ export default function FussballManagerPWA() {
     );
   }
 
-  /* ─── VIEW: STATS (erweitert) ─── */
   if (view === 'stats') {
     return (
       <div style={styles.container}>
@@ -1087,14 +1112,14 @@ export default function FussballManagerPWA() {
             <div style={styles.card}>
               {playerStats.length > 0 ? (
                 <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
                     <thead>
                       <tr style={{ borderBottom: `2px solid ${GRUEN}` }}>
-                        <th style={{ textAlign: 'left', padding: '0.5rem', fontWeight: '600' }}>Spieler</th>
-                        <th style={{ textAlign: 'center', padding: '0.5rem', fontWeight: '600' }}>Gespielt</th>
-                        <th style={{ textAlign: 'center', padding: '0.5rem', fontWeight: '600' }}>Anwesenheit</th>
-                        <th style={{ textAlign: 'center', padding: '0.5rem', fontWeight: '600' }}>Streak</th>
-                        <th style={{ textAlign: 'center', padding: '0.5rem', fontWeight: '600' }}>Best</th>
+                        <th style={{ textAlign: 'left', padding: '0.4rem', fontWeight: '600' }}>Spieler</th>
+                        <th style={{ textAlign: 'center', padding: '0.4rem', fontWeight: '600' }}>Spiele</th>
+                        <th style={{ textAlign: 'center', padding: '0.4rem', fontWeight: '600' }}>%</th>
+                        <th style={{ textAlign: 'center', padding: '0.4rem', fontWeight: '600' }}>🔥</th>
+                        <th style={{ textAlign: 'center', padding: '0.4rem', fontWeight: '600' }}>⭐</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1102,19 +1127,15 @@ export default function FussballManagerPWA() {
                         const extStats = calculatePlayerStats(stat.player_name);
                         return (
                           <tr key={idx} style={{ borderBottom: '1px solid rgba(16, 185, 129, 0.1)' }}>
-                            <td style={{ textAlign: 'left', padding: '0.5rem' }}>{stat.player_name}</td>
-                            <td style={{ textAlign: 'center', padding: '0.5rem' }}>
+                            <td style={{ textAlign: 'left', padding: '0.4rem' }}>{stat.player_name.substring(0, 10)}</td>
+                            <td style={{ textAlign: 'center', padding: '0.4rem' }}>
                               {extStats.playedGames}/{extStats.playedGames + extStats.missedGames}
                             </td>
-                            <td style={{ textAlign: 'center', padding: '0.5rem', color: GRUEN, fontWeight: '600' }}>
-                              {extStats.attendance}%
+                            <td style={{ textAlign: 'center', padding: '0.4rem', color: GRUEN, fontWeight: '600' }}>
+                              {extStats.attendance}
                             </td>
-                            <td style={{ textAlign: 'center', padding: '0.5rem', color: '#fbbf24' }}>
-                              🔥 {extStats.currentStreak}
-                            </td>
-                            <td style={{ textAlign: 'center', padding: '0.5rem', color: '#3b82f6' }}>
-                              ⭐ {extStats.maxStreak}
-                            </td>
+                            <td style={{ textAlign: 'center', padding: '0.4rem' }}>{extStats.currentStreak}</td>
+                            <td style={{ textAlign: 'center', padding: '0.4rem' }}>{extStats.maxStreak}</td>
                           </tr>
                         );
                       })}
@@ -1123,7 +1144,7 @@ export default function FussballManagerPWA() {
                 </div>
               ) : (
                 <div style={{ color: '#6b7280', textAlign: 'center', padding: '1rem' }}>
-                  Keine Daten vorhanden
+                  Keine Daten
                 </div>
               )}
             </div>
@@ -1134,13 +1155,13 @@ export default function FussballManagerPWA() {
             <div style={styles.card}>
               {playerStats.length > 0 ? (
                 <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
                     <thead>
                       <tr style={{ borderBottom: `2px solid ${GRUEN}` }}>
-                        <th style={{ textAlign: 'left', padding: '0.5rem', fontWeight: '600' }}>Spieler</th>
-                        <th style={{ textAlign: 'center', padding: '0.5rem', fontWeight: '600' }}>Tore Gesamt</th>
-                        <th style={{ textAlign: 'center', padding: '0.5rem', fontWeight: '600' }}>Tore/Spiel</th>
-                        <th style={{ textAlign: 'center', padding: '0.5rem', fontWeight: '600' }}>T:G</th>
+                        <th style={{ textAlign: 'left', padding: '0.4rem', fontWeight: '600' }}>Spieler</th>
+                        <th style={{ textAlign: 'center', padding: '0.4rem', fontWeight: '600' }}>Tore</th>
+                        <th style={{ textAlign: 'center', padding: '0.4rem', fontWeight: '600' }}>Ø/Spiel</th>
+                        <th style={{ textAlign: 'center', padding: '0.4rem', fontWeight: '600' }}>T:G</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1148,12 +1169,12 @@ export default function FussballManagerPWA() {
                         const goalsPerGame = getGoalsPerGame(stat.player_name);
                         return (
                           <tr key={idx} style={{ borderBottom: '1px solid rgba(16, 185, 129, 0.1)' }}>
-                            <td style={{ textAlign: 'left', padding: '0.5rem' }}>{stat.player_name}</td>
-                            <td style={{ textAlign: 'center', padding: '0.5rem', color: GRUEN, fontWeight: '600' }}>
+                            <td style={{ textAlign: 'left', padding: '0.4rem' }}>{stat.player_name.substring(0, 10)}</td>
+                            <td style={{ textAlign: 'center', padding: '0.4rem', color: GRUEN, fontWeight: '600' }}>
                               {stat.goals_for}
                             </td>
-                            <td style={{ textAlign: 'center', padding: '0.5rem' }}>{goalsPerGame}</td>
-                            <td style={{ textAlign: 'center', padding: '0.5rem' }}>
+                            <td style={{ textAlign: 'center', padding: '0.4rem' }}>{goalsPerGame}</td>
+                            <td style={{ textAlign: 'center', padding: '0.4rem' }}>
                               {stat.goals_for}:{stat.goals_against}
                             </td>
                           </tr>
@@ -1164,7 +1185,7 @@ export default function FussballManagerPWA() {
                 </div>
               ) : (
                 <div style={{ color: '#6b7280', textAlign: 'center', padding: '1rem' }}>
-                  Keine Daten vorhanden
+                  Keine Daten
                 </div>
               )}
             </div>
@@ -1175,13 +1196,13 @@ export default function FussballManagerPWA() {
             <div style={styles.card}>
               {playerStats.length > 0 ? (
                 <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
                     <thead>
                       <tr style={{ borderBottom: `2px solid ${GRUEN}` }}>
-                        <th style={{ textAlign: 'left', padding: '0.5rem', fontWeight: '600' }}>Spieler</th>
-                        <th style={{ textAlign: 'center', padding: '0.5rem', fontWeight: '600' }}>Pkte</th>
-                        <th style={{ textAlign: 'center', padding: '0.5rem', fontWeight: '600' }}>Ø Pkte</th>
-                        <th style={{ textAlign: 'center', padding: '0.5rem', fontWeight: '600' }}>Siege%</th>
+                        <th style={{ textAlign: 'left', padding: '0.4rem', fontWeight: '600' }}>Spieler</th>
+                        <th style={{ textAlign: 'center', padding: '0.4rem', fontWeight: '600' }}>Pkte</th>
+                        <th style={{ textAlign: 'center', padding: '0.4rem', fontWeight: '600' }}>Ø</th>
+                        <th style={{ textAlign: 'center', padding: '0.4rem', fontWeight: '600' }}>W%</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1190,21 +1211,19 @@ export default function FussballManagerPWA() {
                           ? (stat.points / stat.games_played).toFixed(2)
                           : '0.00';
                         const winPercentage = stat.games_played > 0
-                          ? ((stat.wins / stat.games_played) * 100).toFixed(1)
-                          : '0.0';
+                          ? ((stat.wins / stat.games_played) * 100).toFixed(0)
+                          : '0';
                         return (
                           <tr key={idx} style={{ borderBottom: '1px solid rgba(16, 185, 129, 0.1)' }}>
-                            <td style={{ textAlign: 'left', padding: '0.5rem' }}>
-                              {stat.player_name}
-                              {admins.some((a) => a.player_name === stat.player_name) && (
-                                <span style={{ marginLeft: '0.5rem' }}>👑</span>
-                              )}
+                            <td style={{ textAlign: 'left', padding: '0.4rem' }}>
+                              {stat.player_name.substring(0, 10)}
+                              {admins.some((a) => a.player_name === stat.player_name) && '👑'}
                             </td>
-                            <td style={{ textAlign: 'center', padding: '0.5rem', color: GRUEN, fontWeight: '600' }}>
+                            <td style={{ textAlign: 'center', padding: '0.4rem', color: GRUEN, fontWeight: '600' }}>
                               {stat.points}
                             </td>
-                            <td style={{ textAlign: 'center', padding: '0.5rem' }}>{avgPoints}</td>
-                            <td style={{ textAlign: 'center', padding: '0.5rem' }}>{winPercentage}%</td>
+                            <td style={{ textAlign: 'center', padding: '0.4rem' }}>{avgPoints}</td>
+                            <td style={{ textAlign: 'center', padding: '0.4rem' }}>{winPercentage}%</td>
                           </tr>
                         );
                       })}
@@ -1213,7 +1232,7 @@ export default function FussballManagerPWA() {
                 </div>
               ) : (
                 <div style={{ color: '#6b7280', textAlign: 'center', padding: '1rem' }}>
-                  Keine Daten vorhanden
+                  Keine Daten
                 </div>
               )}
             </div>
@@ -1223,7 +1242,6 @@ export default function FussballManagerPWA() {
     );
   }
 
-  /* ─── VIEW: SCORERS ─── */
   if (view === 'scorers') {
     return (
       <div style={styles.container}>
@@ -1256,7 +1274,98 @@ export default function FussballManagerPWA() {
     );
   }
 
-  /* ─── VIEW: PLAYERS ─── */
+  if (view === 'statspro') {
+    return (
+      <div style={styles.container}>
+        <TopNav />
+        <div style={styles.content}>
+          <div style={styles.section}>
+            <h2 style={styles.sectionTitle}>👥 Team-Bilanz</h2>
+            <div style={styles.card}>
+              {teamBilanz.length > 0 ? (
+                teamBilanz.map((pairing, idx) => {
+                  const totalGames = pairing.games;
+                  const team1WinRate = totalGames > 0
+                    ? ((pairing.team1Wins / totalGames) * 100).toFixed(0)
+                    : '0';
+                  const team2WinRate = totalGames > 0
+                    ? ((pairing.team2Wins / totalGames) * 100).toFixed(0)
+                    : '0';
+                  return (
+                    <div
+                      key={idx}
+                      style={{
+                        ...styles.card,
+                        marginBottom: '1rem',
+                        padding: '1rem',
+                        backgroundColor: 'rgba(16, 185, 129, 0.05)',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                        <div style={{ textAlign: 'center', flex: 1 }}>
+                          <div style={{ fontSize: '1rem', fontWeight: '600', color: GELB }}>{pairing.team1}</div>
+                          <div style={{ fontSize: '0.8rem', color: '#9ca3af', marginTop: '0.25rem' }}>
+                            {pairing.team1Wins}W ({team1WinRate}%)
+                          </div>
+                        </div>
+                        <div style={{
+                          textAlign: 'center',
+                          padding: '0 0.75rem',
+                          borderLeft: `1px solid rgba(16, 185, 129, 0.2)`,
+                          borderRight: `1px solid rgba(16, 185, 129, 0.2)`,
+                        }}>
+                          <div style={{ fontSize: '1rem', fontWeight: 'bold', color: GRUEN }}>{pairing.games}x</div>
+                          <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '0.25rem' }}>Spiele</div>
+                        </div>
+                        <div style={{ textAlign: 'center', flex: 1 }}>
+                          <div style={{ fontSize: '1rem', fontWeight: '600', color: BLAU }}>{pairing.team2}</div>
+                          <div style={{ fontSize: '0.8rem', color: '#9ca3af', marginTop: '0.25rem' }}>
+                            {pairing.team2Wins}W ({team2WinRate}%)
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{
+                        display: 'flex',
+                        justifyContent: 'space-around',
+                        alignItems: 'center',
+                        fontSize: '0.8rem',
+                        color: '#9ca3af',
+                        paddingTop: '0.75rem',
+                        borderTop: `1px solid rgba(16, 185, 129, 0.1)`,
+                      }}>
+                        <div>T: {pairing.team1Goals}</div>
+                        <div>U: {pairing.draws}</div>
+                        <div>T: {pairing.team2Goals}</div>
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <div style={{ color: '#6b7280', textAlign: 'center', padding: '1rem' }}>
+                  Keine Daten vorhanden
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div style={styles.section}>
+            <h2 style={styles.sectionTitle}>🎯 Position-Analyse</h2>
+            <div style={styles.card}>
+              <div style={{ fontSize: '0.9rem', color: '#9ca3af', textAlign: 'center', padding: '1rem' }}>
+                📍 Positionen für Team-Analyse
+              </div>
+              <div style={{ backgroundColor: 'rgba(16, 185, 129, 0.1)', padding: '1rem', borderRadius: '8px', fontSize: '0.85rem' }}>
+                <div style={{ marginBottom: '0.5rem' }}>🏃 Sturm: {players.length} Spieler</div>
+                <div style={{ marginBottom: '0.5rem' }}>🎯 Mittelfeld: {players.length} Spieler</div>
+                <div>🛡️ Abwehr: {players.length} Spieler</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (view === 'players') {
     return (
       <div style={styles.container}>
@@ -1295,9 +1404,7 @@ export default function FussballManagerPWA() {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
                       <span style={{ fontWeight: '600' }}>
                         {player.name}
-                        {admins.some((a) => a.player_name === player.name) && (
-                          <span style={{ marginLeft: '0.5rem' }}>👑</span>
-                        )}
+                        {admins.some((a) => a.player_name === player.name) && '👑'}
                       </span>
                       <div style={{ display: 'flex', gap: '0.5rem' }}>
                         <button
@@ -1443,7 +1550,7 @@ export default function FussballManagerPWA() {
                         }}
                         style={{ ...styles.button, ...styles.buttonSecondary, marginBottom: 0, padding: '0.5rem', fontSize: '0.85rem' }}
                       >
-                        ✏️ Positionen bearbeiten
+                        ✏️ Bearbeiten
                       </button>
                     )}
                   </div>
@@ -1462,7 +1569,6 @@ export default function FussballManagerPWA() {
     );
   }
 
-  /* ─── VIEW: NEW GAME ─── */
   if (view === 'newgame') {
     return (
       <div style={styles.container}>
