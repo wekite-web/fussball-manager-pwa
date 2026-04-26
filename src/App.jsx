@@ -1,6 +1,6 @@
 /**
- * FUSSBALL-MANAGER PWA v13 - COMPLETE WITH POSITIONS
- * Mit Spieler-Positionen (Sturm/Mittelfeld/Abwehr) + Stärke-Bewertung + ALL VIEWS
+ * FUSSBALL-MANAGER PWA v14 - ADVANCED STATS + TEAM GENERATOR
+ * Mit 3 Positionen-Bewertung + Spielstreak + Anwesenheit + Team-Generator
  */
 
 import React, { useState, useEffect } from 'react';
@@ -31,6 +31,7 @@ export default function FussballManagerPWA() {
   const [newPlayerName, setNewPlayerName] = useState('');
   const [editingPositions, setEditingPositions] = useState({});
   const [editingGame, setEditingGame] = useState(null);
+  const [generatedTeams, setGeneratedTeams] = useState(null);
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
     team1: 'Gelb',
@@ -123,8 +124,8 @@ export default function FussballManagerPWA() {
     }
   };
 
-  /* ─── POSITION LOGIC ─── */
-  const savePlayerPosition = async (playerName, position, strength) => {
+  /* ─── POSITIONS LOGIC ─── */
+  const savePlayerPosition = async (playerName, sturm, mittelfeld, abwehr) => {
     try {
       const { data: existing } = await supabase
         .from('player_positions')
@@ -134,27 +135,133 @@ export default function FussballManagerPWA() {
       if (existing && existing.length > 0) {
         await supabase
           .from('player_positions')
-          .update({ position, strength })
+          .update({
+            position_sturm: sturm,
+            position_mittelfeld: mittelfeld,
+            position_abwehr: abwehr,
+            updated_at: new Date().toISOString(),
+          })
           .eq('player_name', playerName);
       } else {
         await supabase
           .from('player_positions')
-          .insert([{ player_name: playerName, position, strength }]);
+          .insert([{
+            player_name: playerName,
+            position_sturm: sturm,
+            position_mittelfeld: mittelfeld,
+            position_abwehr: abwehr,
+          }]);
       }
 
       await loadPlayerPositions();
-      showNotification(`✅ ${playerName} Position aktualisiert`);
+      showNotification(`✅ ${playerName} Positionen aktualisiert`);
     } catch (err) {
       console.error('Fehler beim Speichern der Position:', err);
       alert('Fehler beim Speichern');
     }
   };
 
-  const getPlayerPosition = (playerName) => {
+  const getPlayerPositions = (playerName) => {
     const pos = playerPositions.find((p) => p.player_name === playerName);
     return pos
-      ? { position: pos.position, strength: pos.strength }
-      : { position: '-', strength: 0 };
+      ? {
+          sturm: pos.position_sturm || 5,
+          mittelfeld: pos.position_mittelfeld || 5,
+          abwehr: pos.position_abwehr || 5,
+        }
+      : { sturm: 5, mittelfeld: 5, abwehr: 5 };
+  };
+
+  /* ─── STATS CALCULATIONS ─── */
+  const calculatePlayerStats = (playerName) => {
+    const playerGames = games.filter((g) => {
+      const { data: gamePlayers } = supabase
+        .from('game_players')
+        .select('*')
+        .eq('player_name', playerName)
+        .eq('game_id', g.game_id);
+      return gamePlayers && gamePlayers.length > 0;
+    });
+
+    const totalGames = games.length;
+    const playedGames = playerGames.length;
+    const missedGames = totalGames - playedGames;
+    const attendance = totalGames > 0 ? ((playedGames / totalGames) * 100).toFixed(1) : '0.0';
+
+    // Spielstreak (letzte 5 Spiele)
+    const recentGames = games.slice(0, 5);
+    let streak = 0;
+    for (const g of recentGames) {
+      const isInGame = playerGames.some((pg) => pg.game_id === g.game_id);
+      if (isInGame) streak += 1;
+      else break;
+    }
+
+    // Anwesenheits-Streak (längste Phase)
+    let maxStreak = 0;
+    let currentStreak = 0;
+    const sortedGames = [...games].reverse();
+    for (const g of sortedGames) {
+      const isInGame = playerGames.some((pg) => pg.game_id === g.game_id);
+      if (isInGame) {
+        currentStreak += 1;
+        maxStreak = Math.max(maxStreak, currentStreak);
+      } else {
+        currentStreak = 0;
+      }
+    }
+
+    return {
+      playedGames,
+      missedGames,
+      attendance,
+      currentStreak: streak,
+      maxStreak,
+    };
+  };
+
+  const getGoalsPerGame = (playerName) => {
+    const stat = playerStats.find((s) => s.player_name === playerName);
+    if (!stat || stat.games_played === 0) return '0.00';
+    return (stat.goals_for / stat.games_played).toFixed(2);
+  };
+
+  /* ─── TEAM GENERATOR ─── */
+  const generateBalancedTeams = () => {
+    if (players.length < 2) {
+      alert('Mindestens 2 Spieler erforderlich!');
+      return;
+    }
+
+    // Berechne durchschnittliche Bewertung pro Spieler
+    const playerScores = players.map((p) => {
+      const pos = getPlayerPositions(p.name);
+      const avg = (pos.sturm + pos.mittelfeld + pos.abwehr) / 3;
+      return { name: p.name, score: avg, positions: pos };
+    });
+
+    // Sortiere nach Score
+    playerScores.sort((a, b) => b.score - a.score);
+
+    // Verteile alternierend
+    const team1 = [];
+    const team2 = [];
+    playerScores.forEach((p, idx) => {
+      if (idx % 2 === 0) team1.push(p);
+      else team2.push(p);
+    });
+
+    // Berechne Team-Durchschnitte
+    const team1Avg = (team1.reduce((sum, p) => sum + p.score, 0) / team1.length).toFixed(2);
+    const team2Avg = (team2.reduce((sum, p) => sum + p.score, 0) / team2.length).toFixed(2);
+
+    setGeneratedTeams({
+      team1: { players: team1, avg: team1Avg },
+      team2: { players: team2, avg: team2Avg },
+      difference: Math.abs(team1Avg - team2Avg).toFixed(2),
+    });
+
+    showNotification('✅ Teams generiert!');
   };
 
   /* ─── TEAM BILANZ ─── */
@@ -216,9 +323,12 @@ export default function FussballManagerPWA() {
     try {
       await supabase.from('players').insert([{ name: newPlayer }]);
       await supabase.from('player_stats').insert([{ player_name: newPlayer }]);
-      await supabase
-        .from('player_positions')
-        .insert([{ player_name: newPlayer, position: '-', strength: 5 }]);
+      await supabase.from('player_positions').insert([{
+        player_name: newPlayer,
+        position_sturm: 5,
+        position_mittelfeld: 5,
+        position_abwehr: 5,
+      }]);
       setNewPlayer('');
       await loadPlayers();
       await loadPlayerPositions();
@@ -466,7 +576,6 @@ export default function FussballManagerPWA() {
       const pointsForDraw = 1;
       const pointsForLoser = 0;
 
-      // Update stats for team 1 players
       for (const playerName of formData.players1) {
         let pointsEarned = pointsForLoser;
         let wins = 0;
@@ -503,7 +612,6 @@ export default function FussballManagerPWA() {
         }]);
       }
 
-      // Update stats for team 2 players
       for (const playerName of formData.players2) {
         let pointsEarned = pointsForLoser;
         let wins = 0;
@@ -851,7 +959,7 @@ export default function FussballManagerPWA() {
         <header style={styles.header}>
           <div />
           <div style={styles.headerTitle}>
-            <h1 style={styles.title}>⚽ Manager</h1>
+            <h1 style={styles.title}>⚽ Manager v14</h1>
           </div>
           <button
             style={styles.adminButton}
@@ -870,7 +978,6 @@ export default function FussballManagerPWA() {
         </header>
 
         <div style={styles.content}>
-          {/* Admin Actions */}
           {isAdminMode && (
             <div style={styles.section}>
               <button
@@ -885,10 +992,46 @@ export default function FussballManagerPWA() {
               >
                 👥 Spieler verwalten
               </button>
+              <button
+                style={{ ...styles.button, ...styles.buttonSecondary }}
+                onClick={generateBalancedTeams}
+              >
+                🎯 Teams generieren
+              </button>
             </div>
           )}
 
-          {/* Stats Quick Links */}
+          {generatedTeams && (
+            <div style={styles.section}>
+              <h2 style={styles.sectionTitle}>🎯 Generierte Teams</h2>
+              <div style={styles.card}>
+                <div style={{ marginBottom: '1rem' }}>
+                  <div style={{ color: GELB, fontWeight: '600', marginBottom: '0.5rem' }}>
+                    Team 1 (Ø {generatedTeams.team1.avg})
+                  </div>
+                  {generatedTeams.team1.players.map((p) => (
+                    <div key={p.name} style={{ fontSize: '0.85rem', padding: '0.25rem' }}>
+                      {p.name}
+                    </div>
+                  ))}
+                </div>
+                <div style={{ borderTop: `1px solid rgba(16, 185, 129, 0.2)`, paddingTop: '1rem', marginBottom: '1rem' }}>
+                  <div style={{ color: BLAU, fontWeight: '600', marginBottom: '0.5rem' }}>
+                    Team 2 (Ø {generatedTeams.team2.avg})
+                  </div>
+                  {generatedTeams.team2.players.map((p) => (
+                    <div key={p.name} style={{ fontSize: '0.85rem', padding: '0.25rem' }}>
+                      {p.name}
+                    </div>
+                  ))}
+                </div>
+                <div style={{ textAlign: 'center', color: GRUEN, fontSize: '0.85rem', fontWeight: '600' }}>
+                  Differenz: {generatedTeams.difference}
+                </div>
+              </div>
+            </div>
+          )}
+
           <div style={styles.section}>
             <h2 style={styles.sectionTitle}>📊 Statistiken</h2>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
@@ -911,7 +1054,6 @@ export default function FussballManagerPWA() {
             </div>
           </div>
 
-          {/* Game History */}
           {games.length > 0 && (
             <div style={styles.section}>
               <h2 style={styles.sectionTitle}>📅 Historie</h2>
@@ -972,14 +1114,534 @@ export default function FussballManagerPWA() {
     );
   }
 
-  /* ─── VIEW: NEW GAME ─── */
+  /* ─── VIEW: STATS (erweitert mit neuen Spalten) ─── */
+  if (view === 'stats') {
+    return (
+      <div style={styles.container}>
+        <header style={styles.header}>
+          <button style={styles.backButton} onClick={() => setView('home')}>↩️</button>
+          <div style={styles.headerTitle}>
+            <h1 style={styles.title}>📊 Erweiterte Statistiken</h1>
+          </div>
+          <div />
+        </header>
+
+        <div style={styles.content}>
+          <div style={styles.section}>
+            <h2 style={styles.sectionTitle}>🏆 Anwesenheit & Form</h2>
+            <div style={styles.card}>
+              {playerStats.length > 0 ? (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                    <thead>
+                      <tr style={{ borderBottom: `2px solid ${GRUEN}` }}>
+                        <th style={{ textAlign: 'left', padding: '0.5rem', fontWeight: '600' }}>Spieler</th>
+                        <th style={{ textAlign: 'center', padding: '0.5rem', fontWeight: '600' }}>Gespielt</th>
+                        <th style={{ textAlign: 'center', padding: '0.5rem', fontWeight: '600' }}>Anwesenheit</th>
+                        <th style={{ textAlign: 'center', padding: '0.5rem', fontWeight: '600' }}>Streak</th>
+                        <th style={{ textAlign: 'center', padding: '0.5rem', fontWeight: '600' }}>Best</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {playerStats.map((stat, idx) => {
+                        const extStats = calculatePlayerStats(stat.player_name);
+                        return (
+                          <tr key={idx} style={{ borderBottom: '1px solid rgba(16, 185, 129, 0.1)' }}>
+                            <td style={{ textAlign: 'left', padding: '0.5rem' }}>{stat.player_name}</td>
+                            <td style={{ textAlign: 'center', padding: '0.5rem' }}>
+                              {extStats.playedGames}/{extStats.playedGames + extStats.missedGames}
+                            </td>
+                            <td style={{ textAlign: 'center', padding: '0.5rem', color: GRUEN, fontWeight: '600' }}>
+                              {extStats.attendance}%
+                            </td>
+                            <td style={{ textAlign: 'center', padding: '0.5rem', color: '#fbbf24' }}>
+                              🔥 {extStats.currentStreak}
+                            </td>
+                            <td style={{ textAlign: 'center', padding: '0.5rem', color: '#3b82f6' }}>
+                              ⭐ {extStats.maxStreak}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div style={{ color: '#6b7280', textAlign: 'center', padding: '1rem' }}>
+                  Keine Daten vorhanden
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div style={styles.section}>
+            <h2 style={styles.sectionTitle}>⚽ Tore & Effizienz</h2>
+            <div style={styles.card}>
+              {playerStats.length > 0 ? (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                    <thead>
+                      <tr style={{ borderBottom: `2px solid ${GRUEN}` }}>
+                        <th style={{ textAlign: 'left', padding: '0.5rem', fontWeight: '600' }}>Spieler</th>
+                        <th style={{ textAlign: 'center', padding: '0.5rem', fontWeight: '600' }}>Tore Gesamt</th>
+                        <th style={{ textAlign: 'center', padding: '0.5rem', fontWeight: '600' }}>Tore/Spiel</th>
+                        <th style={{ textAlign: 'center', padding: '0.5rem', fontWeight: '600' }}>T:G</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {playerStats.map((stat, idx) => {
+                        const goalsPerGame = getGoalsPerGame(stat.player_name);
+                        return (
+                          <tr key={idx} style={{ borderBottom: '1px solid rgba(16, 185, 129, 0.1)' }}>
+                            <td style={{ textAlign: 'left', padding: '0.5rem' }}>{stat.player_name}</td>
+                            <td style={{ textAlign: 'center', padding: '0.5rem', color: GRUEN, fontWeight: '600' }}>
+                              {stat.goals_for}
+                            </td>
+                            <td style={{ textAlign: 'center', padding: '0.5rem' }}>{goalsPerGame}</td>
+                            <td style={{ textAlign: 'center', padding: '0.5rem' }}>
+                              {stat.goals_for}:{stat.goals_against}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div style={{ color: '#6b7280', textAlign: 'center', padding: '1rem' }}>
+                  Keine Daten vorhanden
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div style={styles.section}>
+            <h2 style={styles.sectionTitle}>🏅 Punkte & Erfolg</h2>
+            <div style={styles.card}>
+              {playerStats.length > 0 ? (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                    <thead>
+                      <tr style={{ borderBottom: `2px solid ${GRUEN}` }}>
+                        <th style={{ textAlign: 'left', padding: '0.5rem', fontWeight: '600' }}>Spieler</th>
+                        <th style={{ textAlign: 'center', padding: '0.5rem', fontWeight: '600' }}>Pkte</th>
+                        <th style={{ textAlign: 'center', padding: '0.5rem', fontWeight: '600' }}>Ø Pkte</th>
+                        <th style={{ textAlign: 'center', padding: '0.5rem', fontWeight: '600' }}>Siege%</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {playerStats.map((stat, idx) => {
+                        const avgPoints = stat.games_played > 0
+                          ? (stat.points / stat.games_played).toFixed(2)
+                          : '0.00';
+                        const winPercentage = stat.games_played > 0
+                          ? ((stat.wins / stat.games_played) * 100).toFixed(1)
+                          : '0.0';
+                        return (
+                          <tr key={idx} style={{ borderBottom: '1px solid rgba(16, 185, 129, 0.1)' }}>
+                            <td style={{ textAlign: 'left', padding: '0.5rem' }}>
+                              {stat.player_name}
+                              {admins.some((a) => a.player_name === stat.player_name) && (
+                                <span style={{ marginLeft: '0.5rem' }}>👑</span>
+                              )}
+                            </td>
+                            <td style={{ textAlign: 'center', padding: '0.5rem', color: GRUEN, fontWeight: '600' }}>
+                              {stat.points}
+                            </td>
+                            <td style={{ textAlign: 'center', padding: '0.5rem' }}>{avgPoints}</td>
+                            <td style={{ textAlign: 'center', padding: '0.5rem' }}>{winPercentage}%</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div style={{ color: '#6b7280', textAlign: 'center', padding: '1rem' }}>
+                  Keine Daten vorhanden
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <BottomNav active="stats" />
+      </div>
+    );
+  }
+
+  /* ─── VIEW: TOP SCORERS ─── */
+  if (view === 'scorers') {
+    return (
+      <div style={styles.container}>
+        <header style={styles.header}>
+          <button style={styles.backButton} onClick={() => setView('home')}>↩️</button>
+          <div style={styles.headerTitle}>
+            <h1 style={styles.title}>⚽ Torschützen</h1>
+          </div>
+          <div />
+        </header>
+
+        <div style={styles.content}>
+          <div style={styles.section}>
+            <h2 style={styles.sectionTitle}>🔥 Top Torschützen</h2>
+            <div style={styles.card}>
+              {topScorers.length > 0 ? (
+                topScorers.map((scorer, idx) => (
+                  <div key={idx} style={styles.statRow}>
+                    <div>
+                      <span style={{ marginRight: '0.75rem' }}>
+                        {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `${idx + 1}.`}
+                      </span>
+                      {scorer.player_name}
+                    </div>
+                    <span style={styles.statValue}>{scorer.total_goals} ⚽</span>
+                  </div>
+                ))
+              ) : (
+                <div style={{ color: '#6b7280', textAlign: 'center', padding: '1rem' }}>
+                  Keine Tore erfasst
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <BottomNav active="scorers" />
+      </div>
+    );
+  }
+
+  /* ─── VIEW: STATS PRO ─── */
+  if (view === 'statspro') {
+    return (
+      <div style={styles.container}>
+        <header style={styles.header}>
+          <button style={styles.backButton} onClick={() => setView('home')}>↩️</button>
+          <div style={styles.headerTitle}>
+            <h1 style={styles.title}>⭐ Statistik Pro</h1>
+          </div>
+          <div />
+        </header>
+
+        <div style={styles.content}>
+          <div style={styles.section}>
+            <h2 style={styles.sectionTitle}>👥 Team-Bilanz</h2>
+            <div style={styles.card}>
+              {teamBilanz.length > 0 ? (
+                teamBilanz.map((pairing, idx) => {
+                  const totalGames = pairing.games;
+                  const team1WinRate = totalGames > 0
+                    ? ((pairing.team1Wins / totalGames) * 100).toFixed(1)
+                    : '0.0';
+                  const team2WinRate = totalGames > 0
+                    ? ((pairing.team2Wins / totalGames) * 100).toFixed(1)
+                    : '0.0';
+                  return (
+                    <div
+                      key={idx}
+                      style={{
+                        ...styles.card,
+                        marginBottom: '1rem',
+                        padding: '1rem',
+                        backgroundColor: 'rgba(16, 185, 129, 0.05)',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                        <div style={{ textAlign: 'center', flex: 1 }}>
+                          <div style={{ fontSize: '1.1rem', fontWeight: '600', color: GELB }}>{pairing.team1}</div>
+                          <div style={{ fontSize: '0.85rem', color: '#9ca3af', marginTop: '0.25rem' }}>
+                            {pairing.team1Wins} Siege ({team1WinRate}%)
+                          </div>
+                        </div>
+                        <div style={{
+                          textAlign: 'center',
+                          padding: '0 1rem',
+                          borderLeft: `1px solid rgba(16, 185, 129, 0.2)`,
+                          borderRight: `1px solid rgba(16, 185, 129, 0.2)`,
+                        }}>
+                          <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: GRUEN }}>{pairing.games}x</div>
+                          <div style={{ fontSize: '0.8rem', color: '#9ca3af', marginTop: '0.25rem' }}>Spiele</div>
+                        </div>
+                        <div style={{ textAlign: 'center', flex: 1 }}>
+                          <div style={{ fontSize: '1.1rem', fontWeight: '600', color: BLAU }}>{pairing.team2}</div>
+                          <div style={{ fontSize: '0.85rem', color: '#9ca3af', marginTop: '0.25rem' }}>
+                            {pairing.team2Wins} Siege ({team2WinRate}%)
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        fontSize: '0.85rem',
+                        color: '#9ca3af',
+                        paddingTop: '0.75rem',
+                        borderTop: `1px solid rgba(16, 185, 129, 0.1)`,
+                      }}>
+                        <div>Tore: {pairing.team1Goals}</div>
+                        <div>Unentschieden: {pairing.draws}</div>
+                        <div>Tore: {pairing.team2Goals}</div>
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <div style={{ color: '#6b7280', textAlign: 'center', padding: '1rem' }}>
+                  Keine Daten vorhanden
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div style={styles.section}>
+            <h2 style={styles.sectionTitle}>🎯 Position-Analyse</h2>
+            <div style={styles.card}>
+              <div style={{ fontSize: '0.9rem', color: '#9ca3af', textAlign: 'center', padding: '1rem' }}>
+                📍 Positionen den Spielern zuordnen, um beste Team-Kombinationen zu analysieren
+              </div>
+              <div style={{ backgroundColor: 'rgba(16, 185, 129, 0.1)', padding: '1rem', borderRadius: '8px' }}>
+                <div style={{ fontSize: '0.85rem', marginBottom: '0.75rem' }}>
+                  <strong>🏃 Sturm:</strong> {players.length} Spieler
+                </div>
+                <div style={{ fontSize: '0.85rem', marginBottom: '0.75rem' }}>
+                  <strong>🎯 Mittelfeld:</strong> {players.length} Spieler
+                </div>
+                <div style={{ fontSize: '0.85rem', marginBottom: '0.75rem' }}>
+                  <strong>🛡️ Abwehr:</strong> {players.length} Spieler
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <BottomNav active="statspro" />
+      </div>
+    );
+  }
+
+  /* ─── VIEW: PLAYERS MANAGEMENT (mit 3 Positionen) ─── */
+  if (view === 'players') {
+    return (
+      <div style={styles.container}>
+        <header style={styles.header}>
+          <button style={styles.backButton} onClick={() => setView('home')}>↩️</button>
+          <div style={styles.headerTitle}>
+            <h1 style={styles.title}>👥 Spieler v14</h1>
+          </div>
+          <div />
+        </header>
+
+        <div style={styles.content}>
+          <form onSubmit={handleAddPlayer} style={{ marginBottom: '1.5rem' }}>
+            <div style={styles.section}>
+              <label style={{ display: 'block', fontSize: '0.9rem', marginBottom: '0.5rem', color: GRUEN }}>
+                Neuen Spieler hinzufügen
+              </label>
+              <input
+                type="text"
+                placeholder="Spieler-Name"
+                value={newPlayer}
+                onChange={(e) => setNewPlayer(e.target.value)}
+                style={styles.input}
+              />
+              <button type="submit" style={{ ...styles.button, ...styles.buttonPrimary }}>
+                ➕ Hinzufügen
+              </button>
+            </div>
+          </form>
+
+          <div style={styles.section}>
+            <h2 style={styles.sectionTitle}>📋 Alle Spieler ({players.length})</h2>
+            <div style={styles.card}>
+              {players.map((player) => {
+                const pos = getPlayerPositions(player.name);
+                const isEditing = editingPositions[player.id];
+
+                return (
+                  <div
+                    key={player.id}
+                    style={{ padding: '1rem', borderBottom: '1px solid rgba(16, 185, 129, 0.1)', fontSize: '0.9rem' }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                      <span style={{ fontWeight: '600' }}>
+                        {player.name}
+                        {admins.some((a) => a.player_name === player.name) && (
+                          <span style={{ marginLeft: '0.5rem' }}>👑</span>
+                        )}
+                      </span>
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button
+                          onClick={() => { setRenamingPlayer(player.id); setNewPlayerName(player.name); }}
+                          style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', fontSize: '1rem' }}
+                        >
+                          ✏️
+                        </button>
+                        <button
+                          onClick={() => deletePlayer(player.name)}
+                          style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '1rem' }}
+                        >
+                          🗑️
+                        </button>
+                      </div>
+                    </div>
+
+                    {renamingPlayer === player.id && (
+                      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                        <input
+                          type="text"
+                          value={newPlayerName}
+                          onChange={(e) => setNewPlayerName(e.target.value)}
+                          style={{ ...styles.input, marginBottom: 0, flex: 1 }}
+                          autoFocus
+                        />
+                        <button
+                          onClick={() => handleRenamePlayer(player.name)}
+                          style={{ ...styles.button, ...styles.buttonPrimary, width: 'auto', padding: '0.75rem', marginBottom: 0 }}
+                        >
+                          ✅
+                        </button>
+                      </div>
+                    )}
+
+                    {/* 3 Positionen */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                      <div>
+                        <label style={{ fontSize: '0.7rem', color: '#9ca3af', display: 'block', marginBottom: '0.25rem' }}>
+                          🏃 Sturm
+                        </label>
+                        {isEditing ? (
+                          <input
+                            type="number"
+                            min="1"
+                            max="10"
+                            value={editingPositions[player.id]?.sturm || pos.sturm}
+                            onChange={(e) => {
+                              setEditingPositions({
+                                ...editingPositions,
+                                [player.id]: { ...(editingPositions[player.id] || {}), sturm: parseInt(e.target.value) },
+                              });
+                            }}
+                            style={{ ...styles.input, marginBottom: 0, fontSize: '0.85rem', padding: '0.5rem' }}
+                          />
+                        ) : (
+                          <div style={{ padding: '0.4rem', backgroundColor: 'rgba(251, 191, 36, 0.2)', borderRadius: '6px', fontSize: '0.85rem', textAlign: 'center', fontWeight: '600' }}>
+                            {pos.sturm}
+                          </div>
+                        )}
+                      </div>
+
+                      <div>
+                        <label style={{ fontSize: '0.7rem', color: '#9ca3af', display: 'block', marginBottom: '0.25rem' }}>
+                          🎯 MF
+                        </label>
+                        {isEditing ? (
+                          <input
+                            type="number"
+                            min="1"
+                            max="10"
+                            value={editingPositions[player.id]?.mittelfeld || pos.mittelfeld}
+                            onChange={(e) => {
+                              setEditingPositions({
+                                ...editingPositions,
+                                [player.id]: { ...(editingPositions[player.id] || {}), mittelfeld: parseInt(e.target.value) },
+                              });
+                            }}
+                            style={{ ...styles.input, marginBottom: 0, fontSize: '0.85rem', padding: '0.5rem' }}
+                          />
+                        ) : (
+                          <div style={{ padding: '0.4rem', backgroundColor: 'rgba(59, 130, 246, 0.2)', borderRadius: '6px', fontSize: '0.85rem', textAlign: 'center', fontWeight: '600' }}>
+                            {pos.mittelfeld}
+                          </div>
+                        )}
+                      </div>
+
+                      <div>
+                        <label style={{ fontSize: '0.7rem', color: '#9ca3af', display: 'block', marginBottom: '0.25rem' }}>
+                          🛡️ AW
+                        </label>
+                        {isEditing ? (
+                          <input
+                            type="number"
+                            min="1"
+                            max="10"
+                            value={editingPositions[player.id]?.abwehr || pos.abwehr}
+                            onChange={(e) => {
+                              setEditingPositions({
+                                ...editingPositions,
+                                [player.id]: { ...(editingPositions[player.id] || {}), abwehr: parseInt(e.target.value) },
+                              });
+                            }}
+                            style={{ ...styles.input, marginBottom: 0, fontSize: '0.85rem', padding: '0.5rem' }}
+                          />
+                        ) : (
+                          <div style={{ padding: '0.4rem', backgroundColor: 'rgba(16, 185, 129, 0.2)', borderRadius: '6px', fontSize: '0.85rem', textAlign: 'center', fontWeight: '600' }}>
+                            {pos.abwehr}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {isEditing ? (
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button
+                          onClick={() => {
+                            savePlayerPosition(
+                              player.name,
+                              editingPositions[player.id].sturm,
+                              editingPositions[player.id].mittelfeld,
+                              editingPositions[player.id].abwehr
+                            );
+                            setEditingPositions({ ...editingPositions, [player.id]: false });
+                          }}
+                          style={{ ...styles.button, ...styles.buttonPrimary, marginBottom: 0, flex: 1, padding: '0.5rem', fontSize: '0.85rem' }}
+                        >
+                          ✅ Speichern
+                        </button>
+                        <button
+                          onClick={() => setEditingPositions({ ...editingPositions, [player.id]: false })}
+                          style={{ ...styles.button, ...styles.buttonSecondary, marginBottom: 0, flex: 1, padding: '0.5rem', fontSize: '0.85rem' }}
+                        >
+                          ✕ Abbrechen
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          setEditingPositions({
+                            ...editingPositions,
+                            [player.id]: { sturm: pos.sturm, mittelfeld: pos.mittelfeld, abwehr: pos.abwehr },
+                          });
+                        }}
+                        style={{ ...styles.button, ...styles.buttonSecondary, marginBottom: 0, padding: '0.5rem', fontSize: '0.85rem' }}
+                      >
+                        ✏️ Positionen bearbeiten
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+
+              {players.length === 0 && (
+                <div style={{ color: '#6b7280', textAlign: 'center', padding: '1rem' }}>
+                  Keine Spieler vorhanden
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <BottomNav active="" />
+      </div>
+    );
+  }
+
+  /* ─── WEITERE VIEWS FOLGEN: NewGame, etc ─── */
   if (view === 'newgame') {
     return (
       <div style={styles.container}>
         <header style={styles.header}>
-          <button style={styles.backButton} onClick={() => { setView('home'); setEditingGame(null); }}>
-            ↩️
-          </button>
+          <button style={styles.backButton} onClick={() => { setView('home'); setEditingGame(null); }}>↩️</button>
           <div style={styles.headerTitle}>
             <h1 style={styles.title}>⚽ {editingGame ? 'Bearbeiten' : 'Neues Spiel'}</h1>
           </div>
@@ -988,8 +1650,6 @@ export default function FussballManagerPWA() {
 
         <div style={styles.content}>
           <form onSubmit={handleNewGame} style={{ marginBottom: '1rem' }}>
-
-            {/* Date */}
             <div style={styles.section}>
               <label style={{ display: 'block', fontSize: '0.9rem', marginBottom: '0.5rem', color: GRUEN }}>
                 📅 Datum
@@ -1003,7 +1663,6 @@ export default function FussballManagerPWA() {
               />
             </div>
 
-            {/* Team 1 (Gelb) Players */}
             <div style={styles.section}>
               <label style={{ display: 'block', fontSize: '0.9rem', marginBottom: '0.5rem', color: GELB }}>
                 👥 GELB ({formData.players1.length})
@@ -1030,7 +1689,6 @@ export default function FussballManagerPWA() {
               </div>
             </div>
 
-            {/* Scores */}
             <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
               <div style={{ flex: 1 }}>
                 <label style={{ display: 'block', fontSize: '0.9rem', marginBottom: '0.5rem', color: GELB }}>
@@ -1058,7 +1716,6 @@ export default function FussballManagerPWA() {
               </div>
             </div>
 
-            {/* Team 2 (Blau) Players */}
             <div style={styles.section}>
               <label style={{ display: 'block', fontSize: '0.9rem', marginBottom: '0.5rem', color: BLAU }}>
                 👥 BLAU ({formData.players2.length})
@@ -1085,7 +1742,6 @@ export default function FussballManagerPWA() {
               </div>
             </div>
 
-            {/* Goals */}
             <div style={styles.section}>
               <label style={{ display: 'block', fontSize: '0.9rem', marginBottom: '0.5rem', color: GRUEN }}>
                 ⚽ Torschützen ({formData.goals.length})
@@ -1178,500 +1834,6 @@ export default function FussballManagerPWA() {
     );
   }
 
-  /* ─── VIEW: STATS TABLE ─── */
-  if (view === 'stats') {
-    return (
-      <div style={styles.container}>
-        <header style={styles.header}>
-          <button style={styles.backButton} onClick={() => setView('home')}>↩️</button>
-          <div style={styles.headerTitle}>
-            <h1 style={styles.title}>📊 Tabelle</h1>
-          </div>
-          <div />
-        </header>
-
-        <div style={styles.content}>
-          <div style={styles.section}>
-            <h2 style={styles.sectionTitle}>Detaillierte Spieler-Statistik</h2>
-            <div style={styles.card}>
-              {playerStats.length > 0 ? (
-                <>
-                  {/* Points Table */}
-                  <div style={{ overflowX: 'auto' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                      <thead>
-                        <tr style={{ borderBottom: `2px solid ${GRUEN}` }}>
-                          <th style={{ textAlign: 'left', padding: '0.75rem', fontSize: '0.8rem', fontWeight: '600' }}>Spieler</th>
-                          <th style={{ textAlign: 'center', padding: '0.75rem', fontSize: '0.8rem', fontWeight: '600' }}>Pkte</th>
-                          <th style={{ textAlign: 'center', padding: '0.75rem', fontSize: '0.8rem', fontWeight: '600' }}>Ø Pkte</th>
-                          <th style={{ textAlign: 'center', padding: '0.75rem', fontSize: '0.8rem', fontWeight: '600' }}>S-U-N</th>
-                          <th style={{ textAlign: 'center', padding: '0.75rem', fontSize: '0.8rem', fontWeight: '600' }}>Siegquote</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {playerStats.map((stat, idx) => {
-                          const avgPoints = stat.games_played > 0
-                            ? (stat.points / stat.games_played).toFixed(2)
-                            : '0.00';
-                          const winPercentage = stat.games_played > 0
-                            ? ((stat.wins / stat.games_played) * 100).toFixed(1)
-                            : '0.0';
-                          return (
-                            <tr key={idx} style={{ borderBottom: '1px solid rgba(16, 185, 129, 0.1)' }}>
-                              <td style={{ textAlign: 'left', padding: '0.75rem', fontSize: '0.85rem' }}>
-                                {stat.player_name}
-                                {admins.some((a) => a.player_name === stat.player_name) && (
-                                  <span style={{ marginLeft: '0.5rem' }}>👑</span>
-                                )}
-                              </td>
-                              <td style={{ textAlign: 'center', padding: '0.75rem', fontSize: '0.85rem', color: GRUEN, fontWeight: '600' }}>
-                                {stat.points}
-                              </td>
-                              <td style={{ textAlign: 'center', padding: '0.75rem', fontSize: '0.85rem', color: '#9ca3af' }}>
-                                {avgPoints}
-                              </td>
-                              <td style={{ textAlign: 'center', padding: '0.75rem', fontSize: '0.8rem', color: '#9ca3af' }}>
-                                {stat.wins}-{stat.draws}-{stat.losses}
-                              </td>
-                              <td style={{ textAlign: 'center', padding: '0.75rem', fontSize: '0.85rem', color: '#9ca3af' }}>
-                                {winPercentage}%
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {/* Goals Table */}
-                  <div style={{ marginTop: '1.5rem', paddingTop: '1rem', borderTop: `1px solid rgba(16, 185, 129, 0.2)` }}>
-                    <h3 style={{ fontSize: '1rem', fontWeight: '600', marginBottom: '1rem', color: GRUEN }}>
-                      Tore & Differenzen
-                    </h3>
-                    <div style={{ overflowX: 'auto' }}>
-                      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                        <thead>
-                          <tr style={{ borderBottom: `2px solid ${GRUEN}` }}>
-                            <th style={{ textAlign: 'left', padding: '0.75rem', fontSize: '0.8rem', fontWeight: '600' }}>Spieler</th>
-                            <th style={{ textAlign: 'center', padding: '0.75rem', fontSize: '0.8rem', fontWeight: '600' }}>T:G</th>
-                            <th style={{ textAlign: 'center', padding: '0.75rem', fontSize: '0.8rem', fontWeight: '600' }}>Differenz</th>
-                            <th style={{ textAlign: 'center', padding: '0.75rem', fontSize: '0.8rem', fontWeight: '600' }}>Ø T/Spiel</th>
-                            <th style={{ textAlign: 'center', padding: '0.75rem', fontSize: '0.8rem', fontWeight: '600' }}>Ø G/Spiel</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {playerStats.map((stat, idx) => {
-                            const torDifferenz = stat.goals_for - stat.goals_against;
-                            const avgGoalsFor = stat.games_played > 0
-                              ? (stat.goals_for / stat.games_played).toFixed(2)
-                              : '0.00';
-                            const avgGoalsAgainst = stat.games_played > 0
-                              ? (stat.goals_against / stat.games_played).toFixed(2)
-                              : '0.00';
-                            const diffColor = torDifferenz > 0 ? '#10b981' : torDifferenz < 0 ? '#ef4444' : '#9ca3af';
-                            return (
-                              <tr key={idx} style={{ borderBottom: '1px solid rgba(16, 185, 129, 0.1)' }}>
-                                <td style={{ textAlign: 'left', padding: '0.75rem', fontSize: '0.85rem' }}>
-                                  {stat.player_name}
-                                </td>
-                                <td style={{ textAlign: 'center', padding: '0.75rem', fontSize: '0.85rem', color: '#9ca3af' }}>
-                                  {stat.goals_for}:{stat.goals_against}
-                                </td>
-                                <td style={{ textAlign: 'center', padding: '0.75rem', fontSize: '0.85rem', color: diffColor, fontWeight: '600' }}>
-                                  {torDifferenz > 0 ? '+' : ''}{torDifferenz}
-                                </td>
-                                <td style={{ textAlign: 'center', padding: '0.75rem', fontSize: '0.85rem', color: '#9ca3af' }}>
-                                  {avgGoalsFor}
-                                </td>
-                                <td style={{ textAlign: 'center', padding: '0.75rem', fontSize: '0.85rem', color: '#9ca3af' }}>
-                                  {avgGoalsAgainst}
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <div style={{ color: '#6b7280', textAlign: 'center', padding: '1rem' }}>
-                  Keine Daten vorhanden
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <BottomNav active="stats" />
-      </div>
-    );
-  }
-
-  /* ─── VIEW: TOP SCORERS ─── */
-  if (view === 'scorers') {
-    return (
-      <div style={styles.container}>
-        <header style={styles.header}>
-          <button style={styles.backButton} onClick={() => setView('home')}>↩️</button>
-          <div style={styles.headerTitle}>
-            <h1 style={styles.title}>⚽ Torschützen</h1>
-          </div>
-          <div />
-        </header>
-
-        <div style={styles.content}>
-          <div style={styles.section}>
-            <h2 style={styles.sectionTitle}>Top Torschützen</h2>
-            <div style={styles.card}>
-              {topScorers.length > 0 ? (
-                topScorers.map((scorer, idx) => (
-                  <div key={idx} style={styles.statRow}>
-                    <div>
-                      <span style={{ marginRight: '0.75rem' }}>
-                        {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `${idx + 1}.`}
-                      </span>
-                      {scorer.player_name}
-                    </div>
-                    <span style={styles.statValue}>{scorer.total_goals} ⚽</span>
-                  </div>
-                ))
-              ) : (
-                <div style={{ color: '#6b7280', textAlign: 'center', padding: '1rem' }}>
-                  Keine Tore erfasst
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <BottomNav active="scorers" />
-      </div>
-    );
-  }
-
-  /* ─── VIEW: STATS PRO ─── */
-  if (view === 'statspro') {
-    return (
-      <div style={styles.container}>
-        <header style={styles.header}>
-          <button style={styles.backButton} onClick={() => setView('home')}>↩️</button>
-          <div style={styles.headerTitle}>
-            <h1 style={styles.title}>⭐ Statistik Pro</h1>
-          </div>
-          <div />
-        </header>
-
-        <div style={styles.content}>
-          {/* Team Bilanz */}
-          <div style={styles.section}>
-            <h2 style={styles.sectionTitle}>👥 Team-Bilanz</h2>
-            <div style={styles.card}>
-              {teamBilanz.length > 0 ? (
-                teamBilanz.map((pairing, idx) => {
-                  const totalGames = pairing.games;
-                  const team1WinRate = totalGames > 0
-                    ? ((pairing.team1Wins / totalGames) * 100).toFixed(1)
-                    : '0.0';
-                  const team2WinRate = totalGames > 0
-                    ? ((pairing.team2Wins / totalGames) * 100).toFixed(1)
-                    : '0.0';
-                  return (
-                    <div
-                      key={idx}
-                      style={{
-                        ...styles.card,
-                        marginBottom: '1rem',
-                        padding: '1rem',
-                        backgroundColor: 'rgba(16, 185, 129, 0.05)',
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-                        <div style={{ textAlign: 'center', flex: 1 }}>
-                          <div style={{ fontSize: '1.1rem', fontWeight: '600', color: GELB }}>{pairing.team1}</div>
-                          <div style={{ fontSize: '0.85rem', color: '#9ca3af', marginTop: '0.25rem' }}>
-                            {pairing.team1Wins} Siege ({team1WinRate}%)
-                          </div>
-                        </div>
-                        <div style={{
-                          textAlign: 'center',
-                          padding: '0 1rem',
-                          borderLeft: `1px solid rgba(16, 185, 129, 0.2)`,
-                          borderRight: `1px solid rgba(16, 185, 129, 0.2)`,
-                        }}>
-                          <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: GRUEN }}>{pairing.games}x</div>
-                          <div style={{ fontSize: '0.8rem', color: '#9ca3af', marginTop: '0.25rem' }}>Spiele</div>
-                        </div>
-                        <div style={{ textAlign: 'center', flex: 1 }}>
-                          <div style={{ fontSize: '1.1rem', fontWeight: '600', color: BLAU }}>{pairing.team2}</div>
-                          <div style={{ fontSize: '0.85rem', color: '#9ca3af', marginTop: '0.25rem' }}>
-                            {pairing.team2Wins} Siege ({team2WinRate}%)
-                          </div>
-                        </div>
-                      </div>
-                      <div style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        fontSize: '0.85rem',
-                        color: '#9ca3af',
-                        paddingTop: '0.75rem',
-                        borderTop: `1px solid rgba(16, 185, 129, 0.1)`,
-                      }}>
-                        <div>Tore: {pairing.team1Goals}</div>
-                        <div>Unentschieden: {pairing.draws}</div>
-                        <div>Tore: {pairing.team2Goals}</div>
-                      </div>
-                    </div>
-                  );
-                })
-              ) : (
-                <div style={{ color: '#6b7280', textAlign: 'center', padding: '1rem' }}>
-                  Keine Daten vorhanden
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Position Analysis */}
-          <div style={styles.section}>
-            <h2 style={styles.sectionTitle}>🎯 Position-Analyse</h2>
-            <div style={styles.card}>
-              <div style={{ fontSize: '0.9rem', color: '#9ca3af', textAlign: 'center', padding: '1rem' }}>
-                📍 Positionen den Spielern zuordnen, um beste Team-Kombinationen zu analysieren
-              </div>
-              <div style={{ backgroundColor: 'rgba(16, 185, 129, 0.1)', padding: '1rem', borderRadius: '8px' }}>
-                <div style={{ fontSize: '0.85rem', marginBottom: '0.75rem' }}>
-                  <strong>🏃 Sturm:</strong>{' '}
-                  {players.filter((p) => {
-                    const pos = playerPositions.find((pos) => pos.player_name === p.name);
-                    return pos?.position === 'Sturm';
-                  }).length} Spieler
-                </div>
-                <div style={{ fontSize: '0.85rem', marginBottom: '0.75rem' }}>
-                  <strong>🎯 Mittelfeld:</strong>{' '}
-                  {players.filter((p) => {
-                    const pos = playerPositions.find((pos) => pos.player_name === p.name);
-                    return pos?.position === 'Mittelfeld';
-                  }).length} Spieler
-                </div>
-                <div style={{ fontSize: '0.85rem', marginBottom: '0.75rem' }}>
-                  <strong>🛡️ Abwehr:</strong>{' '}
-                  {players.filter((p) => {
-                    const pos = playerPositions.find((pos) => pos.player_name === p.name);
-                    return pos?.position === 'Abwehr';
-                  }).length} Spieler
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <BottomNav active="statspro" />
-      </div>
-    );
-  }
-
-  /* ─── VIEW: PLAYERS MANAGEMENT ─── */
-  if (view === 'players') {
-    return (
-      <div style={styles.container}>
-        <header style={styles.header}>
-          <button style={styles.backButton} onClick={() => setView('home')}>↩️</button>
-          <div style={styles.headerTitle}>
-            <h1 style={styles.title}>👥 Spieler</h1>
-          </div>
-          <div />
-        </header>
-
-        <div style={styles.content}>
-          {/* Add Player Form */}
-          <form onSubmit={handleAddPlayer} style={{ marginBottom: '1.5rem' }}>
-            <div style={styles.section}>
-              <label style={{ display: 'block', fontSize: '0.9rem', marginBottom: '0.5rem', color: GRUEN }}>
-                Neuen Spieler hinzufügen
-              </label>
-              <input
-                type="text"
-                placeholder="Spieler-Name"
-                value={newPlayer}
-                onChange={(e) => setNewPlayer(e.target.value)}
-                style={styles.input}
-              />
-              <button type="submit" style={{ ...styles.button, ...styles.buttonPrimary }}>
-                ➕ Hinzufügen
-              </button>
-            </div>
-          </form>
-
-          {/* Player List */}
-          <div style={styles.section}>
-            <h2 style={styles.sectionTitle}>📋 Alle Spieler ({players.length})</h2>
-            <div style={styles.card}>
-              {players.map((player) => {
-                const pos = getPlayerPosition(player.name);
-                const isEditing = editingPositions[player.id];
-
-                return (
-                  <div
-                    key={player.id}
-                    style={{ padding: '1rem', borderBottom: '1px solid rgba(16, 185, 129, 0.1)', fontSize: '0.9rem' }}
-                  >
-                    {/* Player Header */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-                      <span style={{ fontWeight: '600' }}>
-                        {player.name}
-                        {admins.some((a) => a.player_name === player.name) && (
-                          <span style={{ marginLeft: '0.5rem' }}>👑</span>
-                        )}
-                      </span>
-                      <div style={{ display: 'flex', gap: '0.5rem' }}>
-                        <button
-                          onClick={() => { setRenamingPlayer(player.id); setNewPlayerName(player.name); }}
-                          style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', fontSize: '1rem' }}
-                        >
-                          ✏️
-                        </button>
-                        <button
-                          onClick={() => deletePlayer(player.name)}
-                          style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '1rem' }}
-                        >
-                          🗑️
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Rename Input */}
-                    {renamingPlayer === player.id && (
-                      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
-                        <input
-                          type="text"
-                          value={newPlayerName}
-                          onChange={(e) => setNewPlayerName(e.target.value)}
-                          style={{ ...styles.input, marginBottom: 0, flex: 1 }}
-                          autoFocus
-                        />
-                        <button
-                          onClick={() => handleRenamePlayer(player.name)}
-                          style={{ ...styles.button, ...styles.buttonPrimary, width: 'auto', padding: '0.75rem', marginBottom: 0 }}
-                        >
-                          ✅
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Position & Strength */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-                      <div>
-                        <label style={{ fontSize: '0.75rem', color: '#9ca3af', display: 'block', marginBottom: '0.25rem' }}>
-                          Position
-                        </label>
-                        {isEditing ? (
-                          <select
-                            value={editingPositions[player.id]?.position || pos.position}
-                            onChange={(e) => {
-                              setEditingPositions({
-                                ...editingPositions,
-                                [player.id]: { ...(editingPositions[player.id] || {}), position: e.target.value },
-                              });
-                            }}
-                            style={styles.select}
-                          >
-                            <option value="-">Keine</option>
-                            <option value="Sturm">🏃 Sturm</option>
-                            <option value="Mittelfeld">🎯 Mittelfeld</option>
-                            <option value="Abwehr">🛡️ Abwehr</option>
-                          </select>
-                        ) : (
-                          <div style={{ padding: '0.5rem', backgroundColor: 'rgba(16, 185, 129, 0.1)', borderRadius: '6px', fontSize: '0.85rem' }}>
-                            {pos.position === 'Sturm' ? '🏃 Sturm'
-                              : pos.position === 'Mittelfeld' ? '🎯 Mittelfeld'
-                              : pos.position === 'Abwehr' ? '🛡️ Abwehr'
-                              : '-'}
-                          </div>
-                        )}
-                      </div>
-                      <div>
-                        <label style={{ fontSize: '0.75rem', color: '#9ca3af', display: 'block', marginBottom: '0.25rem' }}>
-                          Stärke (1-10)
-                        </label>
-                        {isEditing ? (
-                          <input
-                            type="number"
-                            min="1"
-                            max="10"
-                            value={editingPositions[player.id]?.strength || pos.strength}
-                            onChange={(e) => {
-                              setEditingPositions({
-                                ...editingPositions,
-                                [player.id]: { ...(editingPositions[player.id] || {}), strength: parseInt(e.target.value) },
-                              });
-                            }}
-                            style={{ ...styles.input, marginBottom: 0 }}
-                          />
-                        ) : (
-                          <div style={{ padding: '0.5rem', backgroundColor: 'rgba(16, 185, 129, 0.1)', borderRadius: '6px', fontSize: '0.85rem' }}>
-                            ⭐ {pos.strength}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Save / Edit Position Buttons */}
-                    {isEditing ? (
-                      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem' }}>
-                        <button
-                          onClick={() => {
-                            savePlayerPosition(
-                              player.name,
-                              editingPositions[player.id].position,
-                              editingPositions[player.id].strength
-                            );
-                            setEditingPositions({ ...editingPositions, [player.id]: false });
-                          }}
-                          style={{ ...styles.button, ...styles.buttonPrimary, marginBottom: 0, flex: 1, padding: '0.5rem' }}
-                        >
-                          ✅ Speichern
-                        </button>
-                        <button
-                          onClick={() => setEditingPositions({ ...editingPositions, [player.id]: false })}
-                          style={{ ...styles.button, ...styles.buttonSecondary, marginBottom: 0, flex: 1, padding: '0.5rem' }}
-                        >
-                          ✕ Abbrechen
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => {
-                          setEditingPositions({
-                            ...editingPositions,
-                            [player.id]: { position: pos.position, strength: pos.strength },
-                          });
-                        }}
-                        style={{ ...styles.button, ...styles.buttonSecondary, marginTop: '0.75rem', marginBottom: 0, padding: '0.5rem', fontSize: '0.85rem' }}
-                      >
-                        ✏️ Position bearbeiten
-                      </button>
-                    )}
-                  </div>
-                );
-              })}
-
-              {players.length === 0 && (
-                <div style={{ color: '#6b7280', textAlign: 'center', padding: '1rem' }}>
-                  Keine Spieler vorhanden
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <BottomNav active="" />
-      </div>
-    );
-  }
-
-  /* ─── FALLBACK ─── */
   return (
     <div style={styles.container}>
       <h1>Loading...</h1>
