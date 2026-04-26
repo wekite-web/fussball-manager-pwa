@@ -1434,7 +1434,7 @@ export default function FussballManagerPWA() {
                             <tr key={idx} style={{borderBottom: '1px solid rgba(16, 185, 129, 0.1)'}}>
                               <td style={{textAlign: 'left', padding: '0.75rem', fontSize: '0.85rem'}}>
                                 {stat.player_name}
-                                {isAdminUser(stat.player_name) && <span style={{marginLeft: '0.5rem'}}>👑</span>}
+                                {admins.some(a => a.player_name === stat.player_name) && <span style={{marginLeft: '0.5rem'}}>👑</span>}
                               </td>
                               <td style={{textAlign: 'center', padding: '0.75rem', fontSize: '0.85rem', color: GRUEN, fontWeight: '600'}}>{stat.points}</td>
                               <td style={{textAlign: 'center', padding: '0.75rem', fontSize: '0.85rem', color: '#9ca3af'}}>{avgPoints}</td>
