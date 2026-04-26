@@ -114,6 +114,9 @@ export default function FussballManagerPWA() {
       setAdminPassword('');
     }
   };
+  const isAdminUser = (playerName) => {
+  return admins.some(admin => admin.player_name === playerName);
+};
 
   const loadPlayers = async () => {
     try {
