@@ -684,73 +684,82 @@ export default function FussballManagerPWA() {
       backgroundColor: '#0f172a',
       color: '#fff',
       fontFamily: '"Segoe UI", Tahoma, Geneva, sans-serif',
-      paddingTop: '140px',
+      paddingTop: '108px',
       paddingBottom: '20px',
       backgroundImage: 'linear-gradient(135deg, #0f172a 0%, #1a2332 100%)',
     },
+    /* Wrapper: both header + nav rows fixed at top */
     topNav: {
       position: 'fixed',
       top: 0,
       left: 0,
       right: 0,
-      background: `linear-gradient(135deg, ${GRUEN} 0%, #059669 100%)`,
-      padding: '0.75rem 1rem',
-      boxShadow: `0 8px 16px rgba(16, 185, 129, 0.2)`,
       zIndex: 100,
-      maxWidth: '500px',
-      margin: '0 auto',
-      width: '100%',
-      boxSizing: 'border-box',
     },
-    topNavInner: {
+    /* Row 1: back button + title + admin button */
+    header: {
+      background: `linear-gradient(135deg, ${GRUEN} 0%, #059669 100%)`,
+      padding: '0.6rem 1rem',
+      boxShadow: '0 2px 8px rgba(16, 185, 129, 0.25)',
       display: 'flex',
       justifyContent: 'space-between',
       alignItems: 'center',
       gap: '0.5rem',
     },
+    headerTitle: {
+      fontSize: '1.1rem',
+      fontWeight: 'bold',
+      color: '#fff',
+      flex: 1,
+      textAlign: 'center',
+      letterSpacing: '0.02em',
+    },
     backButton: {
       background: 'rgba(255, 255, 255, 0.2)',
       border: 'none',
       color: '#fff',
-      padding: '0.5rem 0.75rem',
+      padding: '0.45rem 0.8rem',
       borderRadius: '6px',
       cursor: 'pointer',
-      fontSize: '1.3rem',
+      fontSize: '1.1rem',
       fontWeight: 'bold',
-      minWidth: '45px',
+      minWidth: '44px',
       textAlign: 'center',
-    },
-    navButtons: {
-      display: 'flex',
-      gap: '0.5rem',
-      flex: 1,
-      overflowX: 'auto',
-    },
-    navButton: {
-      background: 'rgba(255, 255, 255, 0.2)',
-      border: 'none',
-      color: '#fff',
-      padding: '0.5rem 0.75rem',
-      borderRadius: '6px',
-      cursor: 'pointer',
-      fontSize: '0.75rem',
-      fontWeight: '600',
-      whiteSpace: 'nowrap',
-      flex: '0 0 auto',
-    },
-    navButtonActive: {
-      background: 'rgba(255, 255, 255, 0.4)',
-      color: '#fff',
     },
     adminButton: {
       background: 'rgba(255, 255, 255, 0.2)',
       border: 'none',
       color: '#fff',
-      padding: '0.5rem 0.6rem',
+      padding: '0.45rem 0.6rem',
       borderRadius: '6px',
       cursor: 'pointer',
       fontSize: '1rem',
       fontWeight: 'bold',
+      minWidth: '44px',
+      textAlign: 'center',
+    },
+    /* Row 2: tab navigation buttons */
+    navBar: {
+      background: 'rgba(15, 23, 42, 0.97)',
+      borderBottom: `2px solid rgba(16, 185, 129, 0.25)`,
+      display: 'flex',
+    },
+    navButton: {
+      flex: 1,
+      background: 'transparent',
+      border: 'none',
+      borderBottom: '2px solid transparent',
+      color: '#6b7280',
+      padding: '0.55rem 0.25rem',
+      cursor: 'pointer',
+      fontSize: '0.72rem',
+      fontWeight: '600',
+      textAlign: 'center',
+      marginBottom: '-2px',
+    },
+    navButtonActive: {
+      color: GRUEN,
+      borderBottomColor: GRUEN,
     },
     content: {
       maxWidth: '500px',
@@ -890,77 +899,64 @@ export default function FussballManagerPWA() {
 
   const TopNav = () => (
     <div style={styles.topNav}>
-      <div style={styles.topNavInner}>
+      {/* Row 1: Header */}
+      <div style={styles.header}>
         {view !== 'home' ? (
           <button
             style={styles.backButton}
-            onClick={() => {
-              setView('home');
-              setEditingGame(null);
-            }}
+            onClick={() => { setView('home'); setEditingGame(null); }}
             title="Zurück"
           >
             &lt;&lt;
           </button>
         ) : (
-          <div style={{ minWidth: '45px' }} />
+          <div style={{ minWidth: '44px' }} />
         )}
-        
-        <div style={styles.navButtons}>
-          <button
-            style={{
-              ...styles.navButton,
-              ...(view === 'home' ? styles.navButtonActive : {}),
-            }}
-            onClick={() => { setView('home'); setEditingGame(null); }}
-          >
-            🏠 Home
-          </button>
-          <button
-            style={{
-              ...styles.navButton,
-              ...(view === 'stats' ? styles.navButtonActive : {}),
-            }}
-            onClick={() => setView('stats')}
-          >
-            📊 Tabelle
-          </button>
-          <button
-            style={{
-              ...styles.navButton,
-              ...(view === 'scorers' ? styles.navButtonActive : {}),
-            }}
-            onClick={() => setView('scorers')}
-          >
-            ⚽ Tore
-          </button>
-          <button
-            style={{
-              ...styles.navButton,
-              ...(view === 'statspro' ? styles.navButtonActive : {}),
-            }}
-            onClick={() => setView('statspro')}
-          >
-            ⭐ Pro
-          </button>
-        </div>
 
-        {view === 'home' && (
-          <button
-            style={styles.adminButton}
-            onClick={() => {
-              if (isAdminMode) {
-                setIsAdminMode(false);
-                showNotification('❌ Admin-Mode deaktiviert');
-              } else {
-                setShowAdminLogin(true);
-              }
-            }}
-            title={isAdminMode ? 'Admin-Mode AUS' : 'Admin-Mode AN'}
-          >
-            {isAdminMode ? '🔐' : '🔓'}
-          </button>
-        )}
+        <span style={styles.headerTitle}>⚽ Manager</span>
+
+        <button
+          style={styles.adminButton}
+          onClick={() => {
+            if (isAdminMode) {
+              setIsAdminMode(false);
+              showNotification('❌ Admin-Mode deaktiviert');
+            } else {
+              setShowAdminLogin(true);
+            }
+          }}
+          title={isAdminMode ? 'Admin-Mode AUS' : 'Admin-Mode AN'}
+        >
+          {isAdminMode ? '🔐' : '🔓'}
+        </button>
+      </div>
+
+      {/* Row 2: Navigation tabs */}
+      <div style={styles.navBar}>
+        <button
+          style={{ ...styles.navButton, ...(view === 'home' ? styles.navButtonActive : {}) }}
+          onClick={() => { setView('home'); setEditingGame(null); }}
+        >
+          🏠 Home
+        </button>
+        <button
+          style={{ ...styles.navButton, ...(view === 'stats' ? styles.navButtonActive : {}) }}
+          onClick={() => setView('stats')}
+        >
+          📊 Tabelle
+        </button>
+        <button
+          style={{ ...styles.navButton, ...(view === 'scorers' ? styles.navButtonActive : {}) }}
+          onClick={() => setView('scorers')}
+        >
+          ⚽ Tore
+        </button>
+        <button
+          style={{ ...styles.navButton, ...(view === 'statspro' ? styles.navButtonActive : {}) }}
+          onClick={() => setView('statspro')}
+        >
+          ⭐ Pro
+        </button>
       </div>
     </div>
   );
