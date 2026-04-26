@@ -1627,7 +1627,7 @@ export default function FussballManagerPWA() {
                     ) : (
                       <span>
                         {player.name}
-                        {isAdminUser(player.name) && <span style={{marginLeft: '0.5rem'}}>👑</span>}
+                        {admins.some(a => a.player_name === player.name) && <span style={{marginLeft: '0.5rem'}}>👑</span>}
                       </span>
                     )}
                   </div>
