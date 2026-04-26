@@ -114,9 +114,6 @@ export default function FussballManagerPWA() {
       setAdminPassword('');
     }
   };
-  const isAdminUser = (playerName) => {
-  return admins.some(admin => admin.player_name === playerName);
-};
 
   const loadPlayers = async () => {
     try {
@@ -1302,8 +1299,8 @@ export default function FussballManagerPWA() {
     );
   }
 
-  // ============= TEAM BILANZ VIEW =============
-  if (view === 'teambilanz') {
+  // ============= STATISTIK PRO VIEW =============
+  if (view === 'statspro') {
     return (
       <div style={styles.container}>
         <header style={styles.header}>
@@ -1314,14 +1311,14 @@ export default function FussballManagerPWA() {
             ↩️
           </button>
           <div style={styles.headerTitle}>
-            <h1 style={styles.title}>👥 Team-Bilanz</h1>
+            <h1 style={styles.title}>⭐ Statistik Pro</h1>
           </div>
           <div></div>
         </header>
 
         <div style={styles.content}>
           <div style={styles.section}>
-            <h2 style={styles.sectionTitle}>Kopf-an-Kopf Statistik</h2>
+            <h2 style={styles.sectionTitle}>👥 Team-Bilanz</h2>
             <div style={styles.card}>
               {teamBilanz.length > 0 ? (
                 <>
@@ -1377,7 +1374,7 @@ export default function FussballManagerPWA() {
         </div>
 
         <nav style={styles.bottomNav}>
-          <button style={{...styles.navButton, ...styles.navButtonActive}} onClick={() => setView('home')}>
+          <button style={{...styles.navButton}} onClick={() => setView('home')}>
             🏠 Home
           </button>
           <button style={{...styles.navButton}} onClick={() => setView('stats')}>
@@ -1386,8 +1383,8 @@ export default function FussballManagerPWA() {
           <button style={{...styles.navButton}} onClick={() => setView('scorers')}>
             ⚽ Tore
           </button>
-          <button style={{...styles.navButton}} onClick={() => setView('teambilanz')}>
-            👥 Teams
+          <button style={{...styles.navButton, ...styles.navButtonActive}} onClick={() => setView('statspro')}>
+            ⭐ Pro
           </button>
         </nav>
       </div>
@@ -1437,7 +1434,7 @@ export default function FussballManagerPWA() {
                             <tr key={idx} style={{borderBottom: '1px solid rgba(16, 185, 129, 0.1)'}}>
                               <td style={{textAlign: 'left', padding: '0.75rem', fontSize: '0.85rem'}}>
                                 {stat.player_name}
-                                {admins.some(a => a.player_name === stat.player_name) && <span style={{marginLeft: '0.5rem'}}>👑</span>}
+                                {isAdminUser(stat.player_name) && <span style={{marginLeft: '0.5rem'}}>👑</span>}
                               </td>
                               <td style={{textAlign: 'center', padding: '0.75rem', fontSize: '0.85rem', color: GRUEN, fontWeight: '600'}}>{stat.points}</td>
                               <td style={{textAlign: 'center', padding: '0.75rem', fontSize: '0.85rem', color: '#9ca3af'}}>{avgPoints}</td>
@@ -1509,8 +1506,8 @@ export default function FussballManagerPWA() {
           <button style={{...styles.navButton}} onClick={() => setView('scorers')}>
             ⚽ Tore
           </button>
-          <button style={{...styles.navButton}} onClick={() => setView('teambilanz')}>
-            👥 Teams
+          <button style={{...styles.navButton}} onClick={() => setView('statspro')}>
+            ⭐ Pro
           </button>
         </nav>
       </div>
@@ -1569,8 +1566,8 @@ export default function FussballManagerPWA() {
           <button style={{...styles.navButton}} onClick={() => setView('scorers')}>
             ⚽ Tore
           </button>
-          <button style={{...styles.navButton}} onClick={() => setView('teambilanz')}>
-            👥 Teams
+          <button style={{...styles.navButton}} onClick={() => setView('statspro')}>
+            ⭐ Pro
           </button>
         </nav>
       </div>
