@@ -575,7 +575,6 @@ const handleExportStats = async () => {
           { key: 'stats', label: '📊 Tabelle' },
           { key: 'scorers', label: '⚽ Tore' },
           { key: 'statspro', label: '⭐ Pro' },
-          { key: 'csv', label: '📁 CSV' },
         ].map(({ key, label }) => (
           <button key={key} style={{ ...styles.navButton, ...(view === key ? styles.navButtonActive : {}) }} onClick={() => { setView(key); if (key === 'home') setEditingGame(null); }}>
             {label}
@@ -593,12 +592,21 @@ const handleExportStats = async () => {
         <TopNav />
         <div style={styles.content}>
           {isAdminMode && (
-            <div style={styles.section}>
-              <button style={{ ...styles.button, ...styles.buttonPrimary }} onClick={() => setView('newgame')}>➕ Neues Spiel</button>
-              <button style={{ ...styles.button, ...styles.buttonSecondary }} onClick={() => setView('players')}>👥 Spieler verwalten</button>
-              <button style={{ ...styles.button, ...styles.buttonSecondary }} onClick={generateBalancedTeams}>🎯 Teams generieren</button>
-            </div>
-          )}
+  <div style={styles.section}>
+    <button style={{ ...styles.button, ...styles.buttonPrimary }} onClick={() => setView('newgame')}>
+      ➕ Neues Spiel
+    </button>
+    <button style={{ ...styles.button, ...styles.buttonSecondary }} onClick={() => setView('players')}>
+      👥 Spieler verwalten
+    </button>
+    <button style={{ ...styles.button, ...styles.buttonSecondary }} onClick={() => setView('csv')}>
+      📁 CSV Import/Export
+    </button>
+    <button style={{ ...styles.button, ...styles.buttonSecondary }} onClick={generateBalancedTeams}>
+      🎯 Teams generieren
+    </button>
+  </div>
+)}
 
           {generatedTeams && (
             <div style={styles.section}>
