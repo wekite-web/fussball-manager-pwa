@@ -16,6 +16,7 @@ export default function FussballManagerPWA() {
   const [games, setGames] = useState([]);
   const [players, setPlayers] = useState([]);
   const [goals, setGoals] = useState([]);
+  const [gameSwaps, setGameSwaps] = useState([]);
   const [playerPositions, setPlayerPositions] = useState([]);
   const [admins, setAdmins] = useState([]);
   const [gamePlayers, setGamePlayers] = useState([]);
@@ -37,6 +38,8 @@ export default function FussballManagerPWA() {
     players1: [],
     players2: [],
     goals: [],
+    swapsEnabled: false,
+    swappedPlayers: [],
   });
   const [csvState, setCsvState] = useState({
     status: 'idle', valid: [], warnings: [], errors: [], progress: 0, total: 0
@@ -53,6 +56,7 @@ export default function FussballManagerPWA() {
       loadPlayers(),
       loadGames(),
       loadGoals(),
+      loadGameSwaps(),
       loadPlayerPositions(),
       loadGamePlayers(),
     ]);
@@ -84,39 +88,57 @@ export default function FussballManagerPWA() {
     setGoals(data || []);
   };
 
+  const loadGameSwaps = async () => {
+    const { data } = await supabase.from('game_swaps').select('*');
+    setGameSwaps(data || []);
+  };
+
   const loadGamePlayers = async () => {
     const { data } = await supabase.from('game_players').select('*');
     setGamePlayers(data || []);
   };
 
-  // ─── PLAYER STATS: aus games + game_players berechnet ──────────────────────
+  // ─── PLAYER STATS: aus games + game_players + game_swaps berechnet ─────────
   const playerStats = useMemo(() => {
     const statsMap = {};
     players.forEach((p) => {
-      statsMap[p.name] = { player_name: p.name, games_played: 0, wins: 0, draws: 0, losses: 0, goals_for: 0, goals_against: 0, points: 0 };
+      statsMap[p.name] = { player_name: p.name, games_played: 0, wins: 0, draws: 0, losses: 0, swaps: 0, goals_for: 0, goals_against: 0, points: 0 };
     });
     const gameMap = {};
     games.forEach((g) => { gameMap[g.game_id] = g; });
+
+    // Tauschspieler-Lookup: "game_id__player_name"
+    const swapSet = new Set(gameSwaps.map((s) => `${s.game_id}__${s.player_name}`));
+
     gamePlayers.forEach((gp) => {
       const game = gameMap[gp.game_id];
       if (!game || !statsMap[gp.player_name]) return;
       const s = statsMap[gp.player_name];
+      const isSwapped = swapSet.has(`${gp.game_id}__${gp.player_name}`);
       const isTeam1 = gp.team === game.team1;
-      const goalsFor = isTeam1 ? game.score1 : game.score2;
-      const goalsAgainst = isTeam1 ? game.score2 : game.score1;
       const winner = game.score1 > game.score2 ? 'team1' : game.score2 > game.score1 ? 'team2' : 'draw';
       const isWinner = (winner === 'team1' && isTeam1) || (winner === 'team2' && !isTeam1);
       const isDraw = winner === 'draw';
+
       s.games_played += 1;
-      s.wins += isWinner ? 1 : 0;
-      s.draws += isDraw ? 1 : 0;
-      s.losses += (!isWinner && !isDraw) ? 1 : 0;
-      s.goals_for += goalsFor;
-      s.goals_against += goalsAgainst;
-      s.points += isDraw ? 1 : isWinner ? 3 : 0;
+
+      if (isSwapped) {
+        // Tauschspieler: immer 1,5 Punkte, kein W/U/N, eigener T-Zähler
+        s.points += 1.5;
+        s.swaps += 1;
+      } else {
+        const goalsFor = isTeam1 ? game.score1 : game.score2;
+        const goalsAgainst = isTeam1 ? game.score2 : game.score1;
+        s.wins += isWinner ? 1 : 0;
+        s.draws += isDraw ? 1 : 0;
+        s.losses += (!isWinner && !isDraw) ? 1 : 0;
+        s.goals_for += goalsFor;
+        s.goals_against += goalsAgainst;
+        s.points += isDraw ? 1 : isWinner ? 3 : 0;
+      }
     });
     return Object.values(statsMap).sort((a, b) => b.points - a.points || b.wins - a.wins);
-  }, [games, gamePlayers, players]);
+  }, [games, gamePlayers, players, gameSwaps]);
 
   // ─── TOP SCORERS: aus goals berechnet ──────────────────────────────────────
   const topScorers = useMemo(() => {
@@ -261,10 +283,11 @@ export default function FussballManagerPWA() {
         supabase.from('player_positions').update({ player_name: newPlayerName }).eq('player_name', oldName),
         supabase.from('game_players').update({ player_name: newPlayerName }).eq('player_name', oldName),
         supabase.from('goals').update({ player_name: newPlayerName }).eq('player_name', oldName),
+        supabase.from('game_swaps').update({ player_name: newPlayerName }).eq('player_name', oldName),
       ]);
       setRenamingPlayer(null);
       setNewPlayerName('');
-      await Promise.all([loadPlayers(), loadPlayerPositions(), loadGamePlayers(), loadGoals()]);
+      await Promise.all([loadPlayers(), loadPlayerPositions(), loadGamePlayers(), loadGoals(), loadGameSwaps()]);
       showNotification(`✅ ${oldName} → ${newPlayerName}`);
     } catch (err) {
       console.error('Fehler:', err);
@@ -292,11 +315,12 @@ export default function FussballManagerPWA() {
     if (!isAdminMode) { alert('Nur Admins!'); return; }
     if (!confirm('Spiel wirklich löschen?')) return;
     try {
+      await supabase.from('game_swaps').delete().eq('game_id', gameIdStr);
       await supabase.from('goals').delete().eq('game_id', gameIdStr);
       await supabase.from('game_players').delete().eq('game_id', gameIdStr);
       await supabase.from('game_results').delete().eq('game_id', gameIdStr);
       await supabase.from('games').delete().eq('id', gameId);
-      await Promise.all([loadGames(), loadGamePlayers(), loadGoals()]);
+      await Promise.all([loadGames(), loadGamePlayers(), loadGoals(), loadGameSwaps()]);
       showNotification('✅ Spiel gelöscht');
     } catch (err) {
       console.error('Fehler:', err);
@@ -319,6 +343,13 @@ export default function FussballManagerPWA() {
   const removeGoal = (index) => {
     setFormData((fd) => ({ ...fd, goals: fd.goals.filter((_, i) => i !== index) }));
   };
+
+  const resetFormData = () => setFormData({
+    date: new Date().toISOString().split('T')[0],
+    team1: 'Gelb', team2: 'Blau', score1: 0, score2: 0,
+    players1: [], players2: [], goals: [],
+    swapsEnabled: false, swappedPlayers: [],
+  });
 
   const handleNewGame = async (e) => {
     e.preventDefault();
@@ -345,11 +376,16 @@ export default function FussballManagerPWA() {
         if (formData.goals.length > 0) {
           await supabase.from('goals').insert(formData.goals.map((g) => ({ game_id: gameId, player_name: g.player, team: g.team })));
         }
+
+        if (formData.swapsEnabled && formData.swappedPlayers.length > 0) {
+          await supabase.from('game_swaps').insert(
+            formData.swappedPlayers.map((p) => ({ game_id: gameId, player_name: p }))
+          );
+        }
       }
 
-      await Promise.all([loadGames(), loadGamePlayers(), loadGoals()]);
-
-      setFormData({ date: new Date().toISOString().split('T')[0], team1: 'Gelb', team2: 'Blau', score1: 0, score2: 0, players1: [], players2: [], goals: [] });
+      await Promise.all([loadGames(), loadGamePlayers(), loadGoals(), loadGameSwaps()]);
+      resetFormData();
       setEditingGame(null);
       setView('home');
       showNotification(editingGame ? '✅ Spiel aktualisiert' : `✅ ${formData.team1} ${score1}:${score2} ${formData.team2}`);
@@ -362,7 +398,12 @@ export default function FussballManagerPWA() {
   const startEditGame = (game) => {
     if (!isAdminMode) { alert('Nur Admins!'); return; }
     setEditingGame(game);
-    setFormData({ date: game.date.split('T')[0], team1: game.team1, team2: game.team2, score1: game.score1, score2: game.score2, players1: [], players2: [], goals: [] });
+    setFormData({
+      date: game.date.split('T')[0], team1: game.team1, team2: game.team2,
+      score1: game.score1, score2: game.score2,
+      players1: [], players2: [], goals: [],
+      swapsEnabled: false, swappedPlayers: [],
+    });
     setView('newgame');
   };
 
@@ -400,43 +441,28 @@ export default function FussballManagerPWA() {
   };
 
   const handleExportGames = async () => {
-    try {
-      await exportGamesCSV();
-      showNotification('✅ Spiele exportiert');
-    } catch (err) {
-      alert(err.message);
-    }
+    try { await exportGamesCSV(); showNotification('✅ Spiele exportiert'); }
+    catch (err) { alert(err.message); }
   };
 
   const handleExportStats = async () => {
-    try {
-      await exportStatsCSV();
-      showNotification('✅ Statistiken exportiert');
-    } catch (err) {
-      alert(err.message);
-    }
+    try { await exportStatsCSV(); showNotification('✅ Statistiken exportiert'); }
+    catch (err) { alert(err.message); }
   };
 
   // ─── STYLES ────────────────────────────────────────────────────────────────
   const styles = {
     container: {
-      minHeight: '100vh',
-      backgroundColor: '#0f172a',
-      color: '#fff',
+      minHeight: '100vh', backgroundColor: '#0f172a', color: '#fff',
       fontFamily: '"Segoe UI", Tahoma, Geneva, sans-serif',
-      paddingTop: '108px',
-      paddingBottom: '20px',
+      paddingTop: '108px', paddingBottom: '20px',
       backgroundImage: 'linear-gradient(135deg, #0f172a 0%, #1a2332 100%)',
     },
     topNav: { position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100 },
     header: {
       background: `linear-gradient(135deg, ${GRUEN} 0%, #059669 100%)`,
-      padding: '0.6rem 1rem',
-      boxShadow: '0 2px 8px rgba(16, 185, 129, 0.25)',
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      gap: '0.5rem',
+      padding: '0.6rem 1rem', boxShadow: '0 2px 8px rgba(16, 185, 129, 0.25)',
+      display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem',
     },
     headerTitle: { fontSize: '1.1rem', fontWeight: 'bold', color: '#fff', flex: 1, textAlign: 'center', letterSpacing: '0.02em' },
     backButton: { background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', padding: '0.45rem 0.8rem', borderRadius: '6px', cursor: 'pointer', fontSize: '1.1rem', fontWeight: 'bold', minWidth: '44px', textAlign: 'center' },
@@ -508,18 +534,10 @@ export default function FussballManagerPWA() {
         <div style={styles.content}>
           {isAdminMode && (
             <div style={styles.section}>
-              <button style={{ ...styles.button, ...styles.buttonPrimary }} onClick={() => setView('newgame')}>
-                ➕ Neues Spiel
-              </button>
-              <button style={{ ...styles.button, ...styles.buttonSecondary }} onClick={() => setView('players')}>
-                👥 Spieler verwalten
-              </button>
-              <button style={{ ...styles.button, ...styles.buttonSecondary }} onClick={() => setView('csv')}>
-                📁 CSV Import/Export
-              </button>
-              <button style={{ ...styles.button, ...styles.buttonSecondary }} onClick={generateBalancedTeams}>
-                🎯 Teams generieren
-              </button>
+              <button style={{ ...styles.button, ...styles.buttonPrimary }} onClick={() => setView('newgame')}>➕ Neues Spiel</button>
+              <button style={{ ...styles.button, ...styles.buttonSecondary }} onClick={() => setView('players')}>👥 Spieler verwalten</button>
+              <button style={{ ...styles.button, ...styles.buttonSecondary }} onClick={() => setView('csv')}>📁 CSV Import/Export</button>
+              <button style={{ ...styles.button, ...styles.buttonSecondary }} onClick={generateBalancedTeams}>🎯 Teams generieren</button>
             </div>
           )}
 
@@ -661,6 +679,7 @@ export default function FussballManagerPWA() {
                       <th style={{ textAlign: 'center', padding: '0.4rem', fontWeight: '600' }}>Pkte</th>
                       <th style={{ textAlign: 'center', padding: '0.4rem', fontWeight: '600' }}>Ø</th>
                       <th style={{ textAlign: 'center', padding: '0.4rem', fontWeight: '600' }}>W%</th>
+                      <th style={{ textAlign: 'center', padding: '0.4rem', fontWeight: '600' }}>T</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -673,6 +692,7 @@ export default function FussballManagerPWA() {
                         <td style={{ textAlign: 'center', padding: '0.4rem', color: GRUEN, fontWeight: '600' }}>{stat.points}</td>
                         <td style={{ textAlign: 'center', padding: '0.4rem' }}>{stat.games_played > 0 ? (stat.points / stat.games_played).toFixed(2) : '0.00'}</td>
                         <td style={{ textAlign: 'center', padding: '0.4rem' }}>{stat.games_played > 0 ? ((stat.wins / stat.games_played) * 100).toFixed(0) : '0'}%</td>
+                        <td style={{ textAlign: 'center', padding: '0.4rem', color: stat.swaps > 0 ? GELB : '#6b7280' }}>{stat.swaps > 0 ? stat.swaps : '—'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -837,11 +857,26 @@ export default function FussballManagerPWA() {
   }
 
   if (view === 'newgame') {
+    // Tauschspieler erscheinen in beiden Torschützen-Sektionen
+    const gelbScorers = [
+      ...formData.players1,
+      ...formData.swappedPlayers.filter((p) => formData.players2.includes(p)),
+    ];
+    const blauScorers = [
+      ...formData.players2,
+      ...formData.swappedPlayers.filter((p) => formData.players1.includes(p)),
+    ];
+    const allGamePlayers = [
+      ...formData.players1.map((p) => ({ name: p, team: 'Gelb' })),
+      ...formData.players2.map((p) => ({ name: p, team: 'Blau' })),
+    ];
+
     return (
       <div style={styles.container}>
         <TopNav />
         <div style={styles.content}>
           <form onSubmit={handleNewGame} style={{ marginBottom: '1rem' }}>
+
             <div style={styles.section}>
               <label style={{ display: 'block', fontSize: '0.9rem', marginBottom: '0.5rem', color: GRUEN }}>📅 Datum</label>
               <input type="date" value={formData.date} onChange={(e) => setFormData({ ...formData, date: e.target.value })} style={styles.input} required />
@@ -880,24 +915,83 @@ export default function FussballManagerPWA() {
               </div>
             </div>
 
+            {/* ─── SPIELERTAUSCH ─────────────────────────────────────────── */}
+            <div style={styles.section}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+                <label style={{ fontSize: '0.9rem', color: GRUEN }}>🔄 Spielertausch</label>
+                <button
+                  type="button"
+                  onClick={() => setFormData((fd) => ({ ...fd, swapsEnabled: !fd.swapsEnabled, swappedPlayers: [] }))}
+                  style={{
+                    padding: '0.4rem 1.1rem', border: 'none', borderRadius: '6px',
+                    cursor: 'pointer', fontWeight: '600', fontSize: '0.85rem',
+                    background: formData.swapsEnabled ? GRUEN : 'rgba(255,255,255,0.1)',
+                    color: '#fff',
+                  }}
+                >
+                  {formData.swapsEnabled ? 'JA' : 'NEIN'}
+                </button>
+              </div>
+
+              {formData.swapsEnabled && allGamePlayers.length > 0 && (
+                <div style={{ ...styles.card, padding: '0.75rem' }}>
+                  <div style={{ fontSize: '0.8rem', color: '#9ca3af', marginBottom: '0.75rem' }}>
+                    Spieler auswählen die das Team gewechselt haben:
+                  </div>
+                  {allGamePlayers.map(({ name, team }) => {
+                    const isSwapped = formData.swappedPlayers.includes(name);
+                    return (
+                      <div
+                        key={name}
+                        style={{ ...styles.checkbox, ...(isSwapped ? styles.checkboxChecked : {}) }}
+                        onClick={() => setFormData((fd) => ({
+                          ...fd,
+                          swappedPlayers: isSwapped
+                            ? fd.swappedPlayers.filter((p) => p !== name)
+                            : [...fd.swappedPlayers, name],
+                        }))}
+                      >
+                        <input type="checkbox" checked={isSwapped} onChange={() => {}} style={{ marginRight: '0.75rem', width: '18px', height: '18px', cursor: 'pointer' }} />
+                        <span>{name} {team === 'Gelb' ? '🟡' : '🔵'}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* ─── TORSCHÜTZEN ───────────────────────────────────────────── */}
             <div style={styles.section}>
               <label style={{ display: 'block', fontSize: '0.9rem', marginBottom: '0.5rem', color: GRUEN }}>⚽ Torschützen ({formData.goals.length})</label>
-              {formData.players1.length > 0 && (
+
+              {gelbScorers.length > 0 && (
                 <div style={{ marginBottom: '1rem' }}>
                   <div style={{ fontSize: '0.85rem', color: GELB, marginBottom: '0.5rem', fontWeight: '600' }}>GELB:</div>
                   <div style={{ ...styles.card, padding: '0.75rem' }}>
-                    {formData.players1.map((p) => <button key={p} type="button" onClick={() => addGoal(p, 'Gelb')} style={{ ...styles.button, ...styles.buttonSecondary, marginBottom: '0.5rem', fontSize: '0.9rem', padding: '0.5rem' }}>➕ {p}</button>)}
+                    {gelbScorers.map((p) => (
+                      <button key={p} type="button" onClick={() => addGoal(p, 'Gelb')}
+                        style={{ ...styles.button, ...styles.buttonSecondary, marginBottom: '0.5rem', fontSize: '0.9rem', padding: '0.5rem' }}>
+                        ➕ {p}{formData.swappedPlayers.includes(p) ? ' 🔄' : ''}
+                      </button>
+                    ))}
                   </div>
                 </div>
               )}
-              {formData.players2.length > 0 && (
+
+              {blauScorers.length > 0 && (
                 <div style={{ marginBottom: '1rem' }}>
                   <div style={{ fontSize: '0.85rem', color: BLAU, marginBottom: '0.5rem', fontWeight: '600' }}>BLAU:</div>
                   <div style={{ ...styles.card, padding: '0.75rem' }}>
-                    {formData.players2.map((p) => <button key={p} type="button" onClick={() => addGoal(p, 'Blau')} style={{ ...styles.button, ...styles.buttonSecondary, marginBottom: '0.5rem', fontSize: '0.9rem', padding: '0.5rem' }}>➕ {p}</button>)}
+                    {blauScorers.map((p) => (
+                      <button key={p} type="button" onClick={() => addGoal(p, 'Blau')}
+                        style={{ ...styles.button, ...styles.buttonSecondary, marginBottom: '0.5rem', fontSize: '0.9rem', padding: '0.5rem' }}>
+                        ➕ {p}{formData.swappedPlayers.includes(p) ? ' 🔄' : ''}
+                      </button>
+                    ))}
                   </div>
                 </div>
               )}
+
               {formData.goals.length > 0 && (
                 <div style={{ marginTop: '1rem' }}>
                   <div style={{ fontSize: '0.85rem', color: GRUEN, marginBottom: '0.5rem', fontWeight: '600' }}>Erfasste Tore:</div>
@@ -946,7 +1040,6 @@ export default function FussballManagerPWA() {
           <div style={styles.section}>
             <h2 style={styles.sectionTitle}>📥 Import</h2>
             <div style={styles.card}>
-
               <button
                 style={{ ...styles.button, ...styles.buttonSecondary }}
                 onClick={() => {
@@ -963,9 +1056,7 @@ export default function FussballManagerPWA() {
 
               {csvState.status === 'idle' || csvState.status === 'done' || csvState.status === 'done_with_errors' ? (
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.9rem', color: '#10b981', marginBottom: '0.5rem' }}>
-                    CSV-Datei auswählen
-                  </label>
+                  <label style={{ display: 'block', fontSize: '0.9rem', color: '#10b981', marginBottom: '0.5rem' }}>CSV-Datei auswählen</label>
                   <input type="file" accept=".csv" onChange={handleCSVFile} style={{ ...styles.input, cursor: 'pointer' }} />
                 </div>
               ) : null}
@@ -1023,11 +1114,9 @@ export default function FussballManagerPWA() {
                   </div>
                   <div style={{ backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: '8px', height: '8px', overflow: 'hidden' }}>
                     <div style={{
-                      backgroundColor: '#10b981',
-                      height: '100%',
+                      backgroundColor: '#10b981', height: '100%',
                       width: `${csvState.total > 0 ? (csvState.progress / csvState.total) * 100 : 0}%`,
-                      transition: 'width 0.3s ease',
-                      borderRadius: '8px',
+                      transition: 'width 0.3s ease', borderRadius: '8px',
                     }} />
                   </div>
                 </div>

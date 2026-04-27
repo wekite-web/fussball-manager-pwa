@@ -63,6 +63,7 @@ Die App pflegt **denormalisierte Aggregat-Tabellen** — `player_stats` und `top
 | `goals` | Einzeltore (`game_id`, `player_name`, `team`) |
 | `top_scorers` | Aggregierter Torschützen-Zähler |
 | `team_points` | Punkte pro Spieler pro Spiel — wird für `rollbackGamePoints()` bei Spielbearbeitung benötigt |
+| `game_swaps` | Tauschspieler pro Spiel (`game_id`, `player_name`) — Spieler die das Team gewechselt haben; bekommen immer 1,5 Punkte |
 | `admins` | Spieler die mit 👑 in der Tabelle und Spielerverwaltung angezeigt werden (z.B. Organisatoren) — kein Zusammenhang mit dem Admin-Modus |
 
 **Wichtig:** `game_id` (String) und `id` (numerischer PK) sind unterschiedliche Felder. Beim Löschen braucht `games` den numerischen `id`, alle anderen Tabellen den String `game_id`.
