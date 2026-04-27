@@ -1001,7 +1001,7 @@ if (view === 'csv') {
       <TopNav />
       <div style={styles.content}>
 
-        // EXPORT SECTION
+        
         <div style={styles.section}>
           <h2 style={styles.sectionTitle}>📤 Export</h2>
           <div style={styles.card}>
@@ -1026,12 +1026,12 @@ if (view === 'csv') {
           </div>
         </div>
 
-        // IMPORT SECTION
+        
         <div style={styles.section}>
           <h2 style={styles.sectionTitle}>📥 Import</h2>
           <div style={styles.card}>
 
-            // Vorlage herunterladen
+            
             <button
               style={{ ...styles.button, ...styles.buttonSecondary }}
               onClick={() => {
@@ -1046,7 +1046,7 @@ if (view === 'csv') {
               📄 Vorlage herunterladen
             </button>
 
-            // File Upload
+            
             {csvState.status === 'idle' || csvState.status === 'done' || csvState.status === 'done_with_errors' ? (
               <div>
                 <label style={{ display: 'block', fontSize: '0.9rem', color: '#10b981', marginBottom: '0.5rem' }}>
@@ -1061,14 +1061,14 @@ if (view === 'csv') {
               </div>
             ) : null}
 
-            // Vorschau & Validierung
+            
             {csvState.status === 'preview' && (
               <div>
                 <div style={{ color: '#10b981', fontWeight: '600', marginBottom: '0.75rem' }}>
                   ✅ {csvState.valid.length} Spiele bereit zum Import
                 </div>
 
-                // Vorschau-Tabelle
+                
                 <div style={{ overflowX: 'auto', marginBottom: '1rem' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
                     <thead>
@@ -1113,7 +1113,7 @@ if (view === 'csv') {
               </div>
             )}
 
-            // Import läuft
+            
             {csvState.status === 'importing' && (
               <div style={{ textAlign: 'center', padding: '1rem' }}>
                 <div style={{ color: '#10b981', fontWeight: '600', marginBottom: '0.5rem' }}>
@@ -1131,7 +1131,7 @@ if (view === 'csv') {
               </div>
             )}
 
-            // Fehler anzeigen
+            
             {csvState.errors.length > 0 && (
               <div style={{ backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', padding: '0.75rem', marginTop: '0.75rem' }}>
                 <div style={{ color: '#ef4444', fontWeight: '600', marginBottom: '0.5rem', fontSize: '0.85rem' }}>❌ Fehler</div>
@@ -1139,7 +1139,7 @@ if (view === 'csv') {
               </div>
             )}
 
-            // Import abgeschlossen
+            
             {(csvState.status === 'done' || csvState.status === 'done_with_errors') && (
               <div style={{ marginTop: '0.75rem' }}>
                 <div style={{ color: '#10b981', fontWeight: '600', marginBottom: '0.75rem' }}>
