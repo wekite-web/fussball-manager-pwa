@@ -46,6 +46,8 @@ Jede View ist ein eigener `if (view === '...') return (...)` Block am Ende der K
 - **Zeile 2 (Tab-Nav):** Home / Tabelle / Tore / Pro — Tab-Stil mit grünem Unterstrich
 - `container.paddingTop: '108px'` gleicht die Höhe beider Zeilen aus
 
+**Admin-Modus:** PW-geschützt via hardcoded `ADMIN_PASSWORD` in `App.jsx`. Kein User-basiertes Rollen-System — wer das PW kennt, bekommt Admin-Zugriff (`isAdminMode` State). Unabhängig von der `admins`-Tabelle.
+
 ### Supabase-Tabellen
 
 Die App pflegt **denormalisierte Aggregat-Tabellen** — `player_stats` und `top_scorers` werden bei jedem Spiel manuell inkrementiert, nicht zur Laufzeit berechnet.
@@ -61,7 +63,7 @@ Die App pflegt **denormalisierte Aggregat-Tabellen** — `player_stats` und `top
 | `goals` | Einzeltore (`game_id`, `player_name`, `team`) |
 | `top_scorers` | Aggregierter Torschützen-Zähler |
 | `team_points` | Punkte pro Spieler pro Spiel — wird für `rollbackGamePoints()` bei Spielbearbeitung benötigt |
-| `admins` | Spieler mit Admin-Status (werden mit 👑 in der Tabelle angezeigt) |
+| `admins` | Spieler die mit 👑 in der Tabelle und Spielerverwaltung angezeigt werden (z.B. Organisatoren) — kein Zusammenhang mit dem Admin-Modus |
 
 **Wichtig:** `game_id` (String) und `id` (numerischer PK) sind unterschiedliche Felder. Beim Löschen braucht `games` den numerischen `id`, alle anderen Tabellen den String `game_id`.
 
