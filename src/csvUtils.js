@@ -1,5 +1,5 @@
 /**
- * csvUtils.js — Fußball-Manager PWA v15
+ * csvUtils.js — Fußball-Manager PWA v16
  * CSV Import & Export Modul
  *
  * Usage in App.jsx:
@@ -153,7 +153,8 @@ export function validateCSV(rows, knownPlayers, existingDates = []) {
 
 /**
  * Importiert validierte Spiele in Supabase.
- * Verwendet dieselbe Logik wie handleNewGame() in App.jsx.
+ * Schreibt nur in games, game_results, game_players, goals —
+ * player_stats und top_scorers werden nicht mehr benötigt (useMemo in App.jsx).
  *
  * @param {object[]} validRows - Output von validateCSV().valid
  * @param {function} onProgress - Callback(current, total) für Fortschrittsanzeige
@@ -203,7 +204,6 @@ export async function importGames(validRows, onProgress = () => {}) {
 
       // 4. Torschützen
       if (row.torschuetzen.length > 0) {
-        // Welches Team hat welchen Torschützen? — anhand der Spielerlisten ermitteln
         const gelbSet = new Set(row.gelbSpieler.map((p) => p.toLowerCase()));
         const goals = row.torschuetzen.map((p) => ({
           game_id: gameId,
@@ -211,29 +211,7 @@ export async function importGames(validRows, onProgress = () => {}) {
           team: gelbSet.has(p.toLowerCase()) ? 'Gelb' : 'Blau',
         }));
         await supabase.from('goals').insert(goals);
-
-        // top_scorers aktualisieren
-        for (const goal of goals) {
-          const { data: existing } = await supabase
-            .from('top_scorers')
-            .select('*')
-            .eq('player_name', goal.player_name);
-          if (existing && existing.length > 0) {
-            await supabase
-              .from('top_scorers')
-              .update({ total_goals: existing[0].total_goals + 1 })
-              .eq('player_name', goal.player_name);
-          } else {
-            await supabase
-              .from('top_scorers')
-              .insert([{ player_name: goal.player_name, total_goals: 1 }]);
-          }
-        }
       }
-
-      // 5. Punkte berechnen + player_stats aktualisieren
-      await _applyPoints(gameId, row.gelbSpieler, 'Gelb', winner === 'team1', score1, score2, winner);
-      await _applyPoints(gameId, row.blauSpieler, 'Blau', winner === 'team2', score2, score1, winner);
 
       imported++;
     } catch (err) {
@@ -242,39 +220,6 @@ export async function importGames(validRows, onProgress = () => {}) {
   }
 
   return { imported, errors };
-}
-
-// Interne Hilfsfunktion — Punkte vergeben (identisch zu App.jsx Logik)
-async function _applyPoints(gameId, players, teamName, isWinner, goalsFor, goalsAgainst, winnerStr) {
-  const pointsEarned = winnerStr === 'draw' ? 1 : isWinner ? 3 : 0;
-
-  for (const playerName of players) {
-    const { data: existing } = await supabase
-      .from('player_stats')
-      .select('*')
-      .eq('player_name', playerName);
-
-    if (existing && existing.length > 0) {
-      const s = existing[0];
-      await supabase.from('player_stats').update({
-        games_played: s.games_played + 1,
-        wins: s.wins + (pointsEarned === 3 ? 1 : 0),
-        draws: s.draws + (pointsEarned === 1 ? 1 : 0),
-        losses: s.losses + (pointsEarned === 0 ? 1 : 0),
-        goals_for: s.goals_for + goalsFor,
-        goals_against: s.goals_against + goalsAgainst,
-        points: s.points + pointsEarned,
-        updated_at: new Date().toISOString(),
-      }).eq('player_name', playerName);
-    }
-
-    await supabase.from('team_points').insert([{
-      game_id: gameId,
-      player_name: playerName,
-      team: teamName,
-      points_earned: pointsEarned,
-    }]);
-  }
 }
 
 // ─── EXPORT ────────────────────────────────────────────────────────────────────
@@ -295,7 +240,6 @@ export async function exportGamesCSV() {
     throw new Error('Keine Spiele zum Exportieren vorhanden.');
   }
 
-  // game_players + goals für alle Spiele laden
   const gameIds = games.map((g) => g.game_id);
 
   const { data: gamePlayers } = await supabase
@@ -343,26 +287,55 @@ export async function exportGamesCSV() {
 
 /**
  * Exportiert Spieler-Statistiken als CSV für Excel-Auswertung.
+ * Berechnet aus games, game_players und goals — keine player_stats-Tabelle nötig.
  * Löst automatisch einen Download aus.
  *
  * @returns {Promise<void>}
  */
 export async function exportStatsCSV() {
-  const { data: stats } = await supabase
-    .from('player_stats')
-    .select('*')
-    .order('points', { ascending: false });
+  const [{ data: games }, { data: gamePlayers }, { data: goals }, { data: players }] = await Promise.all([
+    supabase.from('games').select('*'),
+    supabase.from('game_players').select('*'),
+    supabase.from('goals').select('*'),
+    supabase.from('players').select('*'),
+  ]);
 
-  const { data: scorers } = await supabase
-    .from('top_scorers')
-    .select('*');
-
-  if (!stats || stats.length === 0) {
-    throw new Error('Keine Statistiken zum Exportieren vorhanden.');
+  if (!players || players.length === 0) {
+    throw new Error('Keine Spieler vorhanden.');
   }
 
+  // Stats aus Quelldaten berechnen
+  const statsMap = {};
+  players.forEach((p) => {
+    statsMap[p.name] = { player_name: p.name, games_played: 0, wins: 0, draws: 0, losses: 0, goals_for: 0, goals_against: 0, points: 0 };
+  });
+
+  const gameMap = {};
+  (games || []).forEach((g) => { gameMap[g.game_id] = g; });
+
+  (gamePlayers || []).forEach((gp) => {
+    const game = gameMap[gp.game_id];
+    if (!game || !statsMap[gp.player_name]) return;
+    const s = statsMap[gp.player_name];
+    const isTeam1 = gp.team === game.team1;
+    const goalsFor = isTeam1 ? game.score1 : game.score2;
+    const goalsAgainst = isTeam1 ? game.score2 : game.score1;
+    const winner = game.score1 > game.score2 ? 'team1' : game.score2 > game.score1 ? 'team2' : 'draw';
+    const isWinner = (winner === 'team1' && isTeam1) || (winner === 'team2' && !isTeam1);
+    const isDraw = winner === 'draw';
+    s.games_played += 1;
+    s.wins += isWinner ? 1 : 0;
+    s.draws += isDraw ? 1 : 0;
+    s.losses += (!isWinner && !isDraw) ? 1 : 0;
+    s.goals_for += goalsFor;
+    s.goals_against += goalsAgainst;
+    s.points += isDraw ? 1 : isWinner ? 3 : 0;
+  });
+
   const scorerMap = {};
-  (scorers || []).forEach((s) => { scorerMap[s.player_name] = s.total_goals; });
+  (goals || []).forEach((g) => { scorerMap[g.player_name] = (scorerMap[g.player_name] || 0) + 1; });
+
+  const stats = Object.values(statsMap).sort((a, b) => b.points - a.points);
 
   const headers = [
     'spieler', 'punkte', 'spiele', 'siege', 'unentschieden',
@@ -373,25 +346,11 @@ export async function exportStatsCSV() {
   const rows = [headers.join(',')];
 
   stats.forEach((s) => {
-    const winPct = s.games_played > 0
-      ? ((s.wins / s.games_played) * 100).toFixed(1)
-      : '0.0';
-    const ppg = s.games_played > 0
-      ? (s.points / s.games_played).toFixed(2)
-      : '0.00';
-
+    const winPct = s.games_played > 0 ? ((s.wins / s.games_played) * 100).toFixed(1) : '0.0';
+    const ppg = s.games_played > 0 ? (s.points / s.games_played).toFixed(2) : '0.00';
     rows.push([
-      s.player_name,
-      s.points,
-      s.games_played,
-      s.wins,
-      s.draws,
-      s.losses,
-      s.goals_for,
-      s.goals_against,
-      scorerMap[s.player_name] || 0,
-      winPct,
-      ppg,
+      s.player_name, s.points, s.games_played, s.wins, s.draws, s.losses,
+      s.goals_for, s.goals_against, scorerMap[s.player_name] || 0, winPct, ppg,
     ].join(','));
   });
 
@@ -406,7 +365,7 @@ function _today() {
 
 function _downloadCSV(content, filename) {
   // BOM für korrekte Darstellung in Excel (inkl. Umlaute)
-  const bom = '\uFEFF';
+  const bom = '﻿';
   const blob = new Blob([bom + content], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');

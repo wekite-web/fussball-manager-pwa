@@ -1,14 +1,3 @@
-/**
- * FUSSBALL-MANAGER PWA v14.1 - PERFORMANCE OPTIMIERT
- *
- * Fixes gegenüber v14.1 original:
- * 1. useEffect aufgeteilt: Initial-Load nur 1x, games-abhängig nur was nötig
- * 2. calculatePlayerStats() aus Render entfernt → eigener State mit einmaligem Load
- * 3. calculateTeamBilanz() als reiner State-Berechnung ohne Supabase
- * 4. game_players werden einmalig geladen (kein Query pro Render)
- * 5. useMemo für teure Berechnungen (TeamBilanz, Streak)
- */
-
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { parseCSV, validateCSV, importGames, exportGamesCSV, exportStatsCSV } from './csvUtils';
@@ -26,11 +15,9 @@ export default function FussballManagerPWA() {
   const [view, setView] = useState('home');
   const [games, setGames] = useState([]);
   const [players, setPlayers] = useState([]);
-  const [playerStats, setPlayerStats] = useState([]);
+  const [goals, setGoals] = useState([]);
   const [playerPositions, setPlayerPositions] = useState([]);
-  const [topScorers, setTopScorers] = useState([]);
   const [admins, setAdmins] = useState([]);
-  // NEU: game_players als State → kein Query pro Render
   const [gamePlayers, setGamePlayers] = useState([]);
   const [isAdminMode, setIsAdminMode] = useState(false);
   const [adminPassword, setAdminPassword] = useState('');
@@ -52,10 +39,10 @@ export default function FussballManagerPWA() {
     goals: [],
   });
   const [csvState, setCsvState] = useState({
-  status: 'idle', valid: [], warnings: [], errors: [], progress: 0, total: 0
-});
+    status: 'idle', valid: [], warnings: [], errors: [], progress: 0, total: 0
+  });
 
-  // ─── INITIAL LOAD: nur 1x beim Mount ───────────────────────────────────────
+  // ─── INITIAL LOAD ──────────────────────────────────────────────────────────
   useEffect(() => {
     loadAll();
   }, []);
@@ -65,9 +52,8 @@ export default function FussballManagerPWA() {
       loadAdmins(),
       loadPlayers(),
       loadGames(),
-      loadPlayerStats(),
+      loadGoals(),
       loadPlayerPositions(),
-      loadTopScorers(),
       loadGamePlayers(),
     ]);
   };
@@ -93,23 +79,56 @@ export default function FussballManagerPWA() {
     setGames(data || []);
   };
 
-  const loadPlayerStats = async () => {
-    const { data } = await supabase.from('player_stats').select('*').order('points', { ascending: false });
-    setPlayerStats(data || []);
+  const loadGoals = async () => {
+    const { data } = await supabase.from('goals').select('*');
+    setGoals(data || []);
   };
 
-  const loadTopScorers = async () => {
-    const { data } = await supabase.from('top_scorers').select('*').order('total_goals', { ascending: false });
-    setTopScorers(data || []);
-  };
-
-  // NEU: game_players einmalig laden statt pro Render abfragen
   const loadGamePlayers = async () => {
     const { data } = await supabase.from('game_players').select('*');
     setGamePlayers(data || []);
   };
 
-  // ─── TEAM-BILANZ: useMemo statt useEffect → nur neu berechnen wenn games sich ändert
+  // ─── PLAYER STATS: aus games + game_players berechnet ──────────────────────
+  const playerStats = useMemo(() => {
+    const statsMap = {};
+    players.forEach((p) => {
+      statsMap[p.name] = { player_name: p.name, games_played: 0, wins: 0, draws: 0, losses: 0, goals_for: 0, goals_against: 0, points: 0 };
+    });
+    const gameMap = {};
+    games.forEach((g) => { gameMap[g.game_id] = g; });
+    gamePlayers.forEach((gp) => {
+      const game = gameMap[gp.game_id];
+      if (!game || !statsMap[gp.player_name]) return;
+      const s = statsMap[gp.player_name];
+      const isTeam1 = gp.team === game.team1;
+      const goalsFor = isTeam1 ? game.score1 : game.score2;
+      const goalsAgainst = isTeam1 ? game.score2 : game.score1;
+      const winner = game.score1 > game.score2 ? 'team1' : game.score2 > game.score1 ? 'team2' : 'draw';
+      const isWinner = (winner === 'team1' && isTeam1) || (winner === 'team2' && !isTeam1);
+      const isDraw = winner === 'draw';
+      s.games_played += 1;
+      s.wins += isWinner ? 1 : 0;
+      s.draws += isDraw ? 1 : 0;
+      s.losses += (!isWinner && !isDraw) ? 1 : 0;
+      s.goals_for += goalsFor;
+      s.goals_against += goalsAgainst;
+      s.points += isDraw ? 1 : isWinner ? 3 : 0;
+    });
+    return Object.values(statsMap).sort((a, b) => b.points - a.points || b.wins - a.wins);
+  }, [games, gamePlayers, players]);
+
+  // ─── TOP SCORERS: aus goals berechnet ──────────────────────────────────────
+  const topScorers = useMemo(() => {
+    const scorerMap = {};
+    goals.forEach((g) => {
+      if (!scorerMap[g.player_name]) scorerMap[g.player_name] = { player_name: g.player_name, total_goals: 0 };
+      scorerMap[g.player_name].total_goals += 1;
+    });
+    return Object.values(scorerMap).sort((a, b) => b.total_goals - a.total_goals);
+  }, [goals]);
+
+  // ─── TEAM-BILANZ ───────────────────────────────────────────────────────────
   const teamBilanz = useMemo(() => {
     const pairingMap = {};
     games.forEach((game) => {
@@ -128,47 +147,30 @@ export default function FussballManagerPWA() {
     return Object.values(pairingMap).sort((a, b) => b.games - a.games);
   }, [games]);
 
-  // ─── PLAYER STATS: useMemo statt per-render Berechnung ─────────────────────
-  // Berechnet für alle Spieler auf einmal, nicht in jedem Render pro Spieler
+  // ─── EXTENDED STATS: Anwesenheit + Streaks ─────────────────────────────────
   const extendedStats = useMemo(() => {
     const totalGames = games.length;
     const result = {};
-
     playerStats.forEach((stat) => {
       const playerName = stat.player_name;
-      // Spiele dieses Spielers aus dem State (kein Supabase-Query!)
       const playerGameIds = new Set(
-        gamePlayers
-          .filter((gp) => gp.player_name === playerName)
-          .map((gp) => gp.game_id)
+        gamePlayers.filter((gp) => gp.player_name === playerName).map((gp) => gp.game_id)
       );
-
       const playedGames = playerGameIds.size;
       const missedGames = totalGames - playedGames;
       const attendance = totalGames > 0 ? ((playedGames / totalGames) * 100).toFixed(1) : '0.0';
-
-      // Aktueller Streak (letzte 5 Spiele)
       let currentStreak = 0;
       for (const g of games.slice(0, 5)) {
         if (playerGameIds.has(g.game_id)) currentStreak += 1;
         else break;
       }
-
-      // Max Streak
-      let maxStreak = 0;
-      let streak = 0;
+      let maxStreak = 0, streak = 0;
       for (const g of [...games].reverse()) {
-        if (playerGameIds.has(g.game_id)) {
-          streak += 1;
-          maxStreak = Math.max(maxStreak, streak);
-        } else {
-          streak = 0;
-        }
+        if (playerGameIds.has(g.game_id)) { streak += 1; maxStreak = Math.max(maxStreak, streak); }
+        else streak = 0;
       }
-
       result[playerName] = { playedGames, missedGames, attendance, currentStreak, maxStreak };
     });
-
     return result;
   }, [games, playerStats, gamePlayers]);
 
@@ -240,7 +242,6 @@ export default function FussballManagerPWA() {
     if (!newPlayer.trim()) return;
     try {
       await supabase.from('players').insert([{ name: newPlayer }]);
-      await supabase.from('player_stats').insert([{ player_name: newPlayer }]);
       await supabase.from('player_positions').insert([{ player_name: newPlayer, position_sturm: 5, position_mittelfeld: 5, position_abwehr: 5 }]);
       setNewPlayer('');
       await Promise.all([loadPlayers(), loadPlayerPositions()]);
@@ -257,16 +258,13 @@ export default function FussballManagerPWA() {
     try {
       await Promise.all([
         supabase.from('players').update({ name: newPlayerName }).eq('name', oldName),
-        supabase.from('player_stats').update({ player_name: newPlayerName }).eq('player_name', oldName),
         supabase.from('player_positions').update({ player_name: newPlayerName }).eq('player_name', oldName),
-        supabase.from('top_scorers').update({ player_name: newPlayerName }).eq('player_name', oldName),
         supabase.from('game_players').update({ player_name: newPlayerName }).eq('player_name', oldName),
         supabase.from('goals').update({ player_name: newPlayerName }).eq('player_name', oldName),
-        supabase.from('team_points').update({ player_name: newPlayerName }).eq('player_name', oldName),
       ]);
       setRenamingPlayer(null);
       setNewPlayerName('');
-      await Promise.all([loadPlayers(), loadPlayerStats(), loadPlayerPositions(), loadTopScorers(), loadGamePlayers()]);
+      await Promise.all([loadPlayers(), loadPlayerPositions(), loadGamePlayers(), loadGoals()]);
       showNotification(`✅ ${oldName} → ${newPlayerName}`);
     } catch (err) {
       console.error('Fehler:', err);
@@ -280,10 +278,9 @@ export default function FussballManagerPWA() {
     try {
       await Promise.all([
         supabase.from('players').delete().eq('name', playerName),
-        supabase.from('player_stats').delete().eq('player_name', playerName),
         supabase.from('player_positions').delete().eq('player_name', playerName),
       ]);
-      await Promise.all([loadPlayers(), loadPlayerStats(), loadPlayerPositions()]);
+      await Promise.all([loadPlayers(), loadPlayerPositions()]);
       showNotification(`✅ ${playerName} gelöscht`);
     } catch (err) {
       console.error('Fehler:', err);
@@ -295,13 +292,11 @@ export default function FussballManagerPWA() {
     if (!isAdminMode) { alert('Nur Admins!'); return; }
     if (!confirm('Spiel wirklich löschen?')) return;
     try {
-      // FIX: team_points VOR games löschen → verhindert 409 Conflict!
-      await supabase.from('team_points').delete().eq('game_id', gameIdStr);
       await supabase.from('goals').delete().eq('game_id', gameIdStr);
       await supabase.from('game_players').delete().eq('game_id', gameIdStr);
       await supabase.from('game_results').delete().eq('game_id', gameIdStr);
       await supabase.from('games').delete().eq('id', gameId);
-      await Promise.all([loadGames(), loadGamePlayers()]);
+      await Promise.all([loadGames(), loadGamePlayers(), loadGoals()]);
       showNotification('✅ Spiel gelöscht');
     } catch (err) {
       console.error('Fehler:', err);
@@ -325,26 +320,6 @@ export default function FussballManagerPWA() {
     setFormData((fd) => ({ ...fd, goals: fd.goals.filter((_, i) => i !== index) }));
   };
 
-  const rollbackGamePoints = async (gameId) => {
-    const { data: pointsData } = await supabase.from('team_points').select('*').eq('game_id', gameId);
-    if (!pointsData || pointsData.length === 0) return;
-    for (const point of pointsData) {
-      const { data: playerData } = await supabase.from('player_stats').select('*').eq('player_name', point.player_name);
-      if (playerData && playerData.length > 0) {
-        const stats = playerData[0];
-        await supabase.from('player_stats').update({
-          games_played: Math.max(0, stats.games_played - 1),
-          wins: point.points_earned === 3 ? Math.max(0, stats.wins - 1) : stats.wins,
-          draws: point.points_earned === 1 ? Math.max(0, stats.draws - 1) : stats.draws,
-          losses: point.points_earned === 0 ? Math.max(0, stats.losses - 1) : stats.losses,
-          points: Math.max(0, stats.points - point.points_earned),
-          updated_at: new Date().toISOString(),
-        }).eq('player_name', point.player_name);
-      }
-    }
-    await supabase.from('team_points').delete().eq('game_id', gameId);
-  };
-
   const handleNewGame = async (e) => {
     e.preventDefault();
     if (!isAdminMode) { alert('Nur Admins!'); return; }
@@ -352,10 +327,9 @@ export default function FussballManagerPWA() {
       const gameId = editingGame?.game_id || `game_${Date.now()}`;
       const score1 = parseInt(formData.score1);
       const score2 = parseInt(formData.score2);
-      let winner = score1 > score2 ? 'team1' : score2 > score1 ? 'team2' : 'draw';
+      const winner = score1 > score2 ? 'team1' : score2 > score1 ? 'team2' : 'draw';
 
       if (editingGame) {
-        await rollbackGamePoints(gameId);
         await supabase.from('games').update({ date: formData.date, score1, score2 }).eq('id', editingGame.id);
         await supabase.from('game_results').update({ score1, score2, winner }).eq('game_id', gameId);
       } else {
@@ -370,47 +344,10 @@ export default function FussballManagerPWA() {
 
         if (formData.goals.length > 0) {
           await supabase.from('goals').insert(formData.goals.map((g) => ({ game_id: gameId, player_name: g.player, team: g.team })));
-          for (const goal of formData.goals) {
-            const { data: existing } = await supabase.from('top_scorers').select('*').eq('player_name', goal.player);
-            if (existing && existing.length > 0) {
-              await supabase.from('top_scorers').update({ total_goals: existing[0].total_goals + 1 }).eq('player_name', goal.player);
-            } else {
-              await supabase.from('top_scorers').insert([{ player_name: goal.player, total_goals: 1 }]);
-            }
-          }
         }
       }
 
-      // Punkte vergeben
-      const processTeam = async (teamPlayers, teamName, isWinner) => {
-        const pointsEarned = winner === 'draw' ? 1 : isWinner ? 3 : 0;
-        const isGelb = teamName === formData.team1;
-        const goalsFor = isGelb ? score1 : score2;
-        const goalsAgainst = isGelb ? score2 : score1;
-
-        for (const playerName of teamPlayers) {
-          const { data: existing } = await supabase.from('player_stats').select('*').eq('player_name', playerName);
-          if (existing && existing.length > 0) {
-            const stats = existing[0];
-            await supabase.from('player_stats').update({
-              games_played: stats.games_played + 1,
-              wins: stats.wins + (pointsEarned === 3 ? 1 : 0),
-              draws: stats.draws + (pointsEarned === 1 ? 1 : 0),
-              losses: stats.losses + (pointsEarned === 0 ? 1 : 0),
-              goals_for: stats.goals_for + goalsFor,
-              goals_against: stats.goals_against + goalsAgainst,
-              points: stats.points + pointsEarned,
-              updated_at: new Date().toISOString(),
-            }).eq('player_name', playerName);
-          }
-          await supabase.from('team_points').insert([{ game_id: gameId, player_name: playerName, team: teamName, points_earned: pointsEarned }]);
-        }
-      };
-
-      await processTeam(formData.players1, formData.team1, winner === 'team1');
-      await processTeam(formData.players2, formData.team2, winner === 'team2');
-
-      await Promise.all([loadGames(), loadPlayerStats(), loadTopScorers(), loadGamePlayers()]);
+      await Promise.all([loadGames(), loadGamePlayers(), loadGoals()]);
 
       setFormData({ date: new Date().toISOString().split('T')[0], team1: 'Gelb', team2: 'Blau', score1: 0, score2: 0, players1: [], players2: [], goals: [] });
       setEditingGame(null);
@@ -434,73 +371,51 @@ export default function FussballManagerPWA() {
       new Notification('Fußball-Manager', { body: message });
     }
   };
-const handleCSVFile = async (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
 
-  const text = await file.text();
-  const { rows, errors: parseErrors } = parseCSV(text);
+  const handleCSVFile = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const text = await file.text();
+    const { rows, errors: parseErrors } = parseCSV(text);
+    if (parseErrors.length > 0) {
+      setCsvState({ status: 'error', valid: [], warnings: [], errors: parseErrors, progress: 0, total: 0 });
+      return;
+    }
+    const existingDates = games.map((g) => g.date.split('T')[0]);
+    const knownPlayers = players.map((p) => p.name);
+    const { valid, warnings, errors } = validateCSV(rows, knownPlayers, existingDates);
+    setCsvState({ status: errors.length > 0 ? 'error' : 'preview', valid, warnings, errors, progress: 0, total: valid.length });
+    e.target.value = '';
+  };
 
-  if (parseErrors.length > 0) {
-    setCsvState({ status: 'error', valid: [], warnings: [], errors: parseErrors, progress: 0, total: 0 });
-    return;
-  }
+  const handleCSVImport = async () => {
+    if (csvState.valid.length === 0) return;
+    setCsvState((s) => ({ ...s, status: 'importing', progress: 0 }));
+    const { imported, errors } = await importGames(
+      csvState.valid,
+      (current, total) => setCsvState((s) => ({ ...s, progress: current, total }))
+    );
+    await Promise.all([loadGames(), loadGamePlayers(), loadGoals()]);
+    setCsvState((s) => ({ ...s, status: errors.length > 0 ? 'done_with_errors' : 'done', errors: [...s.errors, ...errors], progress: imported }));
+  };
 
-  // Bestehende Spieldaten für Duplikat-Check
-  const existingDates = games.map((g) => g.date.split('T')[0]);
-  const knownPlayers = players.map((p) => p.name);
+  const handleExportGames = async () => {
+    try {
+      await exportGamesCSV();
+      showNotification('✅ Spiele exportiert');
+    } catch (err) {
+      alert(err.message);
+    }
+  };
 
-  const { valid, warnings, errors } = validateCSV(rows, knownPlayers, existingDates);
-
-  setCsvState({
-    status: errors.length > 0 ? 'error' : 'preview',
-    valid,
-    warnings,
-    errors,
-    progress: 0,
-    total: valid.length,
-  });
-
-  // File-Input zurücksetzen damit man dieselbe Datei nochmal laden kann
-  e.target.value = '';
-};
-
-const handleCSVImport = async () => {
-  if (csvState.valid.length === 0) return;
-  setCsvState((s) => ({ ...s, status: 'importing', progress: 0 }));
-
-  const { imported, errors } = await importGames(
-    csvState.valid,
-    (current, total) => setCsvState((s) => ({ ...s, progress: current, total }))
-  );
-
-  await Promise.all([loadGames(), loadPlayerStats(), loadTopScorers(), loadGamePlayers()]);
-
-  setCsvState((s) => ({
-    ...s,
-    status: errors.length > 0 ? 'done_with_errors' : 'done',
-    errors: [...s.errors, ...errors],
-    progress: imported,
-  }));
-};
-
-const handleExportGames = async () => {
-  try {
-    await exportGamesCSV();
-    showNotification('✅ Spiele exportiert');
-  } catch (err) {
-    alert(err.message);
-  }
-};
-
-const handleExportStats = async () => {
-  try {
-    await exportStatsCSV();
-    showNotification('✅ Statistiken exportiert');
-  } catch (err) {
-    alert(err.message);
-  }
-};
+  const handleExportStats = async () => {
+    try {
+      await exportStatsCSV();
+      showNotification('✅ Statistiken exportiert');
+    } catch (err) {
+      alert(err.message);
+    }
+  };
 
   // ─── STYLES ────────────────────────────────────────────────────────────────
   const styles = {
@@ -592,21 +507,21 @@ const handleExportStats = async () => {
         <TopNav />
         <div style={styles.content}>
           {isAdminMode && (
-  <div style={styles.section}>
-    <button style={{ ...styles.button, ...styles.buttonPrimary }} onClick={() => setView('newgame')}>
-      ➕ Neues Spiel
-    </button>
-    <button style={{ ...styles.button, ...styles.buttonSecondary }} onClick={() => setView('players')}>
-      👥 Spieler verwalten
-    </button>
-    <button style={{ ...styles.button, ...styles.buttonSecondary }} onClick={() => setView('csv')}>
-      📁 CSV Import/Export
-    </button>
-    <button style={{ ...styles.button, ...styles.buttonSecondary }} onClick={generateBalancedTeams}>
-      🎯 Teams generieren
-    </button>
-  </div>
-)}
+            <div style={styles.section}>
+              <button style={{ ...styles.button, ...styles.buttonPrimary }} onClick={() => setView('newgame')}>
+                ➕ Neues Spiel
+              </button>
+              <button style={{ ...styles.button, ...styles.buttonSecondary }} onClick={() => setView('players')}>
+                👥 Spieler verwalten
+              </button>
+              <button style={{ ...styles.button, ...styles.buttonSecondary }} onClick={() => setView('csv')}>
+                📁 CSV Import/Export
+              </button>
+              <button style={{ ...styles.button, ...styles.buttonSecondary }} onClick={generateBalancedTeams}>
+                🎯 Teams generieren
+              </button>
+            </div>
+          )}
 
           {generatedTeams && (
             <div style={styles.section}>
@@ -629,7 +544,7 @@ const handleExportStats = async () => {
             <h2 style={styles.sectionTitle}>📊 Quick Stats</h2>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
               <div style={{ ...styles.card, marginBottom: 0, padding: '1rem', textAlign: 'center' }}>
-                <div style={{ fontSize: '2rem', fontWeight: 'bold', color: GRUEN }}>{playerStats.length}</div>
+                <div style={{ fontSize: '2rem', fontWeight: 'bold', color: GRUEN }}>{players.length}</div>
                 <div style={{ fontSize: '0.85rem', color: '#9ca3af' }}>Spieler</div>
               </div>
               <div style={{ ...styles.card, marginBottom: 0, padding: '1rem', textAlign: 'center' }}>
@@ -1003,170 +918,145 @@ const handleExportStats = async () => {
       </div>
     );
   }
-if (view === 'csv') {
-  return (
-    <div style={styles.container}>
-      <TopNav />
-      <div style={styles.content}>
 
-        
-        <div style={styles.section}>
-          <h2 style={styles.sectionTitle}>📤 Export</h2>
-          <div style={styles.card}>
-            <button
-              style={{ ...styles.button, ...styles.buttonSecondary }}
-              onClick={handleExportGames}
-            >
-              📋 Spiele exportieren (CSV)
-            </button>
-            <div style={{ fontSize: '0.8rem', color: '#6b7280', marginBottom: '1rem' }}>
-              Alle Spiele inkl. Spieler & Torschützen — Round-Trip-kompatibel
-            </div>
-            <button
-              style={{ ...styles.button, ...styles.buttonSecondary }}
-              onClick={handleExportStats}
-            >
-              📊 Statistiken exportieren (CSV)
-            </button>
-            <div style={{ fontSize: '0.8rem', color: '#6b7280' }}>
-              Punkte, Tore, Siegquote — für Excel
+  if (view === 'csv') {
+    return (
+      <div style={styles.container}>
+        <TopNav />
+        <div style={styles.content}>
+
+          <div style={styles.section}>
+            <h2 style={styles.sectionTitle}>📤 Export</h2>
+            <div style={styles.card}>
+              <button style={{ ...styles.button, ...styles.buttonSecondary }} onClick={handleExportGames}>
+                📋 Spiele exportieren (CSV)
+              </button>
+              <div style={{ fontSize: '0.8rem', color: '#6b7280', marginBottom: '1rem' }}>
+                Alle Spiele inkl. Spieler & Torschützen — Round-Trip-kompatibel
+              </div>
+              <button style={{ ...styles.button, ...styles.buttonSecondary }} onClick={handleExportStats}>
+                📊 Statistiken exportieren (CSV)
+              </button>
+              <div style={{ fontSize: '0.8rem', color: '#6b7280' }}>
+                Punkte, Tore, Siegquote — für Excel
+              </div>
             </div>
           </div>
-        </div>
 
-        
-        <div style={styles.section}>
-          <h2 style={styles.sectionTitle}>📥 Import</h2>
-          <div style={styles.card}>
+          <div style={styles.section}>
+            <h2 style={styles.sectionTitle}>📥 Import</h2>
+            <div style={styles.card}>
 
-            
-            <button
-              style={{ ...styles.button, ...styles.buttonSecondary }}
-              onClick={() => {
-                const template = 'datum,gelb_spieler,gelb_tore,blau_spieler,blau_tore,torschuetzen\n2026-03-15,Max|Alex|Tom,3,Ben|Stefan|Luca,1,Max|Max|Tom\n';
-                const blob = new Blob(['\uFEFF' + template], { type: 'text/csv;charset=utf-8;' });
-                const url = URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.href = url; link.download = 'vorlage_spiele.csv'; link.click();
-                URL.revokeObjectURL(url);
-              }}
-            >
-              📄 Vorlage herunterladen
-            </button>
+              <button
+                style={{ ...styles.button, ...styles.buttonSecondary }}
+                onClick={() => {
+                  const template = 'datum,gelb_spieler,gelb_tore,blau_spieler,blau_tore,torschuetzen\n2026-03-15,Max|Alex|Tom,3,Ben|Stefan|Luca,1,Max|Max|Tom\n';
+                  const blob = new Blob(['﻿' + template], { type: 'text/csv;charset=utf-8;' });
+                  const url = URL.createObjectURL(blob);
+                  const link = document.createElement('a');
+                  link.href = url; link.download = 'vorlage_spiele.csv'; link.click();
+                  URL.revokeObjectURL(url);
+                }}
+              >
+                📄 Vorlage herunterladen
+              </button>
 
-            
-            {csvState.status === 'idle' || csvState.status === 'done' || csvState.status === 'done_with_errors' ? (
-              <div>
-                <label style={{ display: 'block', fontSize: '0.9rem', color: '#10b981', marginBottom: '0.5rem' }}>
-                  CSV-Datei auswählen
-                </label>
-                <input
-                  type="file"
-                  accept=".csv"
-                  onChange={handleCSVFile}
-                  style={{ ...styles.input, cursor: 'pointer' }}
-                />
-              </div>
-            ) : null}
-
-            
-            {csvState.status === 'preview' && (
-              <div>
-                <div style={{ color: '#10b981', fontWeight: '600', marginBottom: '0.75rem' }}>
-                  ✅ {csvState.valid.length} Spiele bereit zum Import
+              {csvState.status === 'idle' || csvState.status === 'done' || csvState.status === 'done_with_errors' ? (
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.9rem', color: '#10b981', marginBottom: '0.5rem' }}>
+                    CSV-Datei auswählen
+                  </label>
+                  <input type="file" accept=".csv" onChange={handleCSVFile} style={{ ...styles.input, cursor: 'pointer' }} />
                 </div>
+              ) : null}
 
-                
-                <div style={{ overflowX: 'auto', marginBottom: '1rem' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
-                    <thead>
-                      <tr style={{ borderBottom: '2px solid #10b981' }}>
-                        <th style={{ textAlign: 'left', padding: '0.4rem' }}>Datum</th>
-                        <th style={{ textAlign: 'center', padding: '0.4rem' }}>Gelb</th>
-                        <th style={{ textAlign: 'center', padding: '0.4rem' }}>Score</th>
-                        <th style={{ textAlign: 'center', padding: '0.4rem' }}>Blau</th>
-                        <th style={{ textAlign: 'center', padding: '0.4rem' }}>Tore</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {csvState.valid.map((row, idx) => (
-                        <tr key={idx} style={{ borderBottom: '1px solid rgba(16,185,129,0.1)' }}>
-                          <td style={{ padding: '0.4rem' }}>{row.datum}</td>
-                          <td style={{ padding: '0.4rem', textAlign: 'center', fontSize: '0.7rem' }}>{row.gelbSpieler.join(', ')}</td>
-                          <td style={{ padding: '0.4rem', textAlign: 'center', fontWeight: '600', color: '#10b981' }}>{row.score1}:{row.score2}</td>
-                          <td style={{ padding: '0.4rem', textAlign: 'center', fontSize: '0.7rem' }}>{row.blauSpieler.join(', ')}</td>
-                          <td style={{ padding: '0.4rem', textAlign: 'center' }}>{row.torschuetzen.length}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                {csvState.warnings.length > 0 && (
-                  <div style={{ backgroundColor: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.3)', borderRadius: '8px', padding: '0.75rem', marginBottom: '0.75rem' }}>
-                    <div style={{ color: '#fbbf24', fontWeight: '600', marginBottom: '0.5rem', fontSize: '0.85rem' }}>⚠️ Warnungen (übersprungen)</div>
-                    {csvState.warnings.map((w, i) => <div key={i} style={{ fontSize: '0.8rem', color: '#9ca3af' }}>{w}</div>)}
+              {csvState.status === 'preview' && (
+                <div>
+                  <div style={{ color: '#10b981', fontWeight: '600', marginBottom: '0.75rem' }}>
+                    ✅ {csvState.valid.length} Spiele bereit zum Import
                   </div>
-                )}
+                  <div style={{ overflowX: 'auto', marginBottom: '1rem' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '2px solid #10b981' }}>
+                          <th style={{ textAlign: 'left', padding: '0.4rem' }}>Datum</th>
+                          <th style={{ textAlign: 'center', padding: '0.4rem' }}>Gelb</th>
+                          <th style={{ textAlign: 'center', padding: '0.4rem' }}>Score</th>
+                          <th style={{ textAlign: 'center', padding: '0.4rem' }}>Blau</th>
+                          <th style={{ textAlign: 'center', padding: '0.4rem' }}>Tore</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {csvState.valid.map((row, idx) => (
+                          <tr key={idx} style={{ borderBottom: '1px solid rgba(16,185,129,0.1)' }}>
+                            <td style={{ padding: '0.4rem' }}>{row.datum}</td>
+                            <td style={{ padding: '0.4rem', textAlign: 'center', fontSize: '0.7rem' }}>{row.gelbSpieler.join(', ')}</td>
+                            <td style={{ padding: '0.4rem', textAlign: 'center', fontWeight: '600', color: '#10b981' }}>{row.score1}:{row.score2}</td>
+                            <td style={{ padding: '0.4rem', textAlign: 'center', fontSize: '0.7rem' }}>{row.blauSpieler.join(', ')}</td>
+                            <td style={{ padding: '0.4rem', textAlign: 'center' }}>{row.torschuetzen.length}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
 
-                <button style={{ ...styles.button, ...styles.buttonPrimary }} onClick={handleCSVImport}>
-                  ✅ {csvState.valid.length} Spiele importieren
-                </button>
-                <button
-                  style={{ ...styles.button, ...styles.buttonSecondary }}
-                  onClick={() => setCsvState({ status: 'idle', valid: [], warnings: [], errors: [], progress: 0, total: 0 })}
-                >
-                  Abbrechen
-                </button>
-              </div>
-            )}
+                  {csvState.warnings.length > 0 && (
+                    <div style={{ backgroundColor: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.3)', borderRadius: '8px', padding: '0.75rem', marginBottom: '0.75rem' }}>
+                      <div style={{ color: '#fbbf24', fontWeight: '600', marginBottom: '0.5rem', fontSize: '0.85rem' }}>⚠️ Warnungen (übersprungen)</div>
+                      {csvState.warnings.map((w, i) => <div key={i} style={{ fontSize: '0.8rem', color: '#9ca3af' }}>{w}</div>)}
+                    </div>
+                  )}
 
-            
-            {csvState.status === 'importing' && (
-              <div style={{ textAlign: 'center', padding: '1rem' }}>
-                <div style={{ color: '#10b981', fontWeight: '600', marginBottom: '0.5rem' }}>
-                  ⏳ Importiere {csvState.progress} / {csvState.total}
+                  <button style={{ ...styles.button, ...styles.buttonPrimary }} onClick={handleCSVImport}>
+                    ✅ {csvState.valid.length} Spiele importieren
+                  </button>
+                  <button style={{ ...styles.button, ...styles.buttonSecondary }} onClick={() => setCsvState({ status: 'idle', valid: [], warnings: [], errors: [], progress: 0, total: 0 })}>
+                    Abbrechen
+                  </button>
                 </div>
-                <div style={{ backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: '8px', height: '8px', overflow: 'hidden' }}>
-                  <div style={{
-                    backgroundColor: '#10b981',
-                    height: '100%',
-                    width: `${csvState.total > 0 ? (csvState.progress / csvState.total) * 100 : 0}%`,
-                    transition: 'width 0.3s ease',
-                    borderRadius: '8px',
-                  }} />
-                </div>
-              </div>
-            )}
+              )}
 
-            
-            {csvState.errors.length > 0 && (
-              <div style={{ backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', padding: '0.75rem', marginTop: '0.75rem' }}>
-                <div style={{ color: '#ef4444', fontWeight: '600', marginBottom: '0.5rem', fontSize: '0.85rem' }}>❌ Fehler</div>
-                {csvState.errors.map((e, i) => <div key={i} style={{ fontSize: '0.8rem', color: '#9ca3af', marginBottom: '0.25rem' }}>{e}</div>)}
-              </div>
-            )}
-
-            
-            {(csvState.status === 'done' || csvState.status === 'done_with_errors') && (
-              <div style={{ marginTop: '0.75rem' }}>
-                <div style={{ color: '#10b981', fontWeight: '600', marginBottom: '0.75rem' }}>
-                  ✅ {csvState.progress} Spiele erfolgreich importiert
+              {csvState.status === 'importing' && (
+                <div style={{ textAlign: 'center', padding: '1rem' }}>
+                  <div style={{ color: '#10b981', fontWeight: '600', marginBottom: '0.5rem' }}>
+                    ⏳ Importiere {csvState.progress} / {csvState.total}
+                  </div>
+                  <div style={{ backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: '8px', height: '8px', overflow: 'hidden' }}>
+                    <div style={{
+                      backgroundColor: '#10b981',
+                      height: '100%',
+                      width: `${csvState.total > 0 ? (csvState.progress / csvState.total) * 100 : 0}%`,
+                      transition: 'width 0.3s ease',
+                      borderRadius: '8px',
+                    }} />
+                  </div>
                 </div>
-                <button
-                  style={{ ...styles.button, ...styles.buttonSecondary }}
-                  onClick={() => setCsvState({ status: 'idle', valid: [], warnings: [], errors: [], progress: 0, total: 0 })}
-                >
-                  Weiteren Import starten
-                </button>
-              </div>
-            )}
+              )}
+
+              {csvState.errors.length > 0 && (
+                <div style={{ backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', padding: '0.75rem', marginTop: '0.75rem' }}>
+                  <div style={{ color: '#ef4444', fontWeight: '600', marginBottom: '0.5rem', fontSize: '0.85rem' }}>❌ Fehler</div>
+                  {csvState.errors.map((e, i) => <div key={i} style={{ fontSize: '0.8rem', color: '#9ca3af', marginBottom: '0.25rem' }}>{e}</div>)}
+                </div>
+              )}
+
+              {(csvState.status === 'done' || csvState.status === 'done_with_errors') && (
+                <div style={{ marginTop: '0.75rem' }}>
+                  <div style={{ color: '#10b981', fontWeight: '600', marginBottom: '0.75rem' }}>
+                    ✅ {csvState.progress} Spiele erfolgreich importiert
+                  </div>
+                  <button style={{ ...styles.button, ...styles.buttonSecondary }} onClick={() => setCsvState({ status: 'idle', valid: [], warnings: [], errors: [], progress: 0, total: 0 })}>
+                    Weiteren Import starten
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
 
+        </div>
       </div>
-    </div>
-  );
-}
+    );
+  }
+
   return <div style={styles.container}><h1>Loading...</h1></div>;
 }
