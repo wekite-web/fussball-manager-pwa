@@ -409,6 +409,23 @@ export default function FussballManagerPWA() {
       if (editingGame) {
         await supabase.from('games').update({ date: formData.date, score1, score2 }).eq('id', editingGame.id);
         await supabase.from('game_results').update({ score1, score2, winner }).eq('game_id', gameId);
+
+        await supabase.from('game_players').delete().eq('game_id', gameId);
+        const gpInsert = [
+          ...formData.players1.map((p) => ({ game_id: gameId, player_name: p, team: formData.team1 })),
+          ...formData.players2.map((p) => ({ game_id: gameId, player_name: p, team: formData.team2 })),
+        ];
+        if (gpInsert.length > 0) await supabase.from('game_players').insert(gpInsert);
+
+        await supabase.from('goals').delete().eq('game_id', gameId);
+        if (formData.goals.length > 0) {
+          await supabase.from('goals').insert(formData.goals.map((g) => ({ game_id: gameId, player_name: g.player, team: g.team })));
+        }
+
+        await supabase.from('game_swaps').delete().eq('game_id', gameId);
+        if (formData.swapsEnabled && formData.swappedPlayers.length > 0) {
+          await supabase.from('game_swaps').insert(formData.swappedPlayers.map((p) => ({ game_id: gameId, player_name: p })));
+        }
       } else {
         await supabase.from('games').insert([{ game_id: gameId, date: formData.date, team1: formData.team1, team2: formData.team2, score1, score2 }]);
         await supabase.from('game_results').insert([{ game_id: gameId, team1: formData.team1, team2: formData.team2, score1, score2, winner }]);
@@ -443,12 +460,27 @@ export default function FussballManagerPWA() {
 
   const startEditGame = (game) => {
     if (!isAdminMode) { alert('Nur Admins!'); return; }
+    const existingPlayers1 = gamePlayers
+      .filter((gp) => gp.game_id === game.game_id && gp.team === game.team1)
+      .map((gp) => gp.player_name);
+    const existingPlayers2 = gamePlayers
+      .filter((gp) => gp.game_id === game.game_id && gp.team === game.team2)
+      .map((gp) => gp.player_name);
+    const existingGoals = goals
+      .filter((g) => g.game_id === game.game_id)
+      .map((g) => ({ player: g.player_name, team: g.team }));
+    const existingSwaps = gameSwaps
+      .filter((s) => s.game_id === game.game_id)
+      .map((s) => s.player_name);
     setEditingGame(game);
     setFormData({
       date: game.date.split('T')[0], team1: game.team1, team2: game.team2,
       score1: game.score1, score2: game.score2,
-      players1: [], players2: [], goals: [],
-      swapsEnabled: false, swappedPlayers: [],
+      players1: existingPlayers1,
+      players2: existingPlayers2,
+      goals: existingGoals,
+      swapsEnabled: existingSwaps.length > 0,
+      swappedPlayers: existingSwaps,
     });
     setView('newgame');
   };
