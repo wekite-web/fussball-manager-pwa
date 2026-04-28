@@ -239,11 +239,14 @@ export default function FussballManagerPWA() {
 
   const getGoalsPerGame = useCallback(
     (playerName) => {
+      const scorer = topScorers.find((s) => s.player_name === playerName);
       const stat = playerStats.find((s) => s.player_name === playerName);
-      if (!stat || stat.games_played === 0) return '0.00';
-      return (stat.goals_for / stat.games_played).toFixed(2);
+      const indGoals = scorer ? scorer.total_goals : 0;
+      const normalGames = stat ? stat.games_played - stat.swaps : 0;
+      if (normalGames === 0) return '—';
+      return (indGoals / normalGames).toFixed(2);
     },
-    [playerStats]
+    [topScorers, playerStats]
   );
 
   const savePlayerPosition = async (playerName, sturm, mittelfeld, abwehr) => {
@@ -874,10 +877,11 @@ export default function FussballManagerPWA() {
                   <tbody>
                     {playerStats.map((stat, idx) => {
                       const hasNormalGames = stat.games_played - stat.swaps > 0;
+                      const indGoals = (topScorers.find((s) => s.player_name === stat.player_name) || {}).total_goals || 0;
                       return (
                         <tr key={idx} style={{ borderBottom: '1px solid rgba(16,185,129,0.1)' }}>
                           <td style={{ textAlign: 'left', padding: '0.4rem' }}>{stat.player_name.substring(0, 10)}</td>
-                          <td style={{ textAlign: 'center', padding: '0.4rem', color: GRUEN, fontWeight: '600' }}>{hasNormalGames ? stat.goals_for : '—'}</td>
+                          <td style={{ textAlign: 'center', padding: '0.4rem', color: GRUEN, fontWeight: '600' }}>{indGoals > 0 ? indGoals : '—'}</td>
                           <td style={{ textAlign: 'center', padding: '0.4rem' }}>{hasNormalGames ? getGoalsPerGame(stat.player_name) : '—'}</td>
                           <td style={{ textAlign: 'center', padding: '0.4rem' }}>{hasNormalGames ? `${stat.goals_for}:${stat.goals_against}` : '—'}</td>
                         </tr>
@@ -934,12 +938,20 @@ export default function FussballManagerPWA() {
           <div style={styles.section}>
             <h2 style={styles.sectionTitle}>🔥 Top Torschützen</h2>
             <div style={styles.card}>
-              {topScorers.length > 0 ? topScorers.map((scorer, idx) => (
-                <div key={idx} style={styles.statRow}>
-                  <div><span style={{ marginRight: '0.75rem' }}>{idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `${idx + 1}.`}</span>{scorer.player_name}</div>
-                  <span style={styles.statValue}>{scorer.total_goals} ⚽</span>
-                </div>
-              )) : <div style={{ color: '#6b7280', textAlign: 'center', padding: '1rem' }}>Keine Tore erfasst</div>}
+              {topScorers.length > 0 ? topScorers.map((scorer, idx) => {
+                const stat = playerStats.find((s) => s.player_name === scorer.player_name);
+                const normalGames = stat ? stat.games_played - stat.swaps : 0;
+                const avg = normalGames > 0 ? (scorer.total_goals / normalGames).toFixed(2) : '—';
+                return (
+                  <div key={idx} style={{ ...styles.statRow, alignItems: 'center' }}>
+                    <div><span style={{ marginRight: '0.75rem' }}>{idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `${idx + 1}.`}</span>{scorer.player_name}</div>
+                    <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.8rem', color: '#9ca3af' }}>{avg}/Spiel</span>
+                      <span style={styles.statValue}>{scorer.total_goals} ⚽</span>
+                    </div>
+                  </div>
+                );
+              }) : <div style={{ color: '#6b7280', textAlign: 'center', padding: '1rem' }}>Keine Tore erfasst</div>}
             </div>
           </div>
         </div>
