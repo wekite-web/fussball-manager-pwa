@@ -283,24 +283,41 @@ export default function FussballManagerPWA() {
     }
   };
 
+  // Greedy-Zuweisung: OVR + Positionsverteilung gleichzeitig ausbalancieren
+  const buildBalancedTeams = (names) => {
+    const data = names.map((name) => {
+      const pos = getPlayerPositions(name);
+      return { name, ovr: getOVR(name), sturm: pos.sturm, mittelfeld: pos.mittelfeld, abwehr: pos.abwehr };
+    });
+    data.sort((a, b) => b.ovr - a.ovr);
+    const team1 = [], team2 = [];
+    const tot1 = { ovr: 0, sturm: 0, mittelfeld: 0, abwehr: 0 };
+    const tot2 = { ovr: 0, sturm: 0, mittelfeld: 0, abwehr: 0 };
+    const maxSize = Math.ceil(data.length / 2);
+    const addTo = (team, tot, p) => {
+      team.push(p); tot.ovr += p.ovr; tot.sturm += p.sturm; tot.mittelfeld += p.mittelfeld; tot.abwehr += p.abwehr;
+    };
+    // Kombinierter Score: OVR zählt 100%, jede Position 20% — verhindert Klumpenbildung
+    const score = (tot) => tot.ovr + 0.2 * (tot.sturm + tot.mittelfeld + tot.abwehr);
+    data.forEach((p) => {
+      if (team1.length >= maxSize) addTo(team2, tot2, p);
+      else if (team2.length >= maxSize) addTo(team1, tot1, p);
+      else if (score(tot1) <= score(tot2)) addTo(team1, tot1, p);
+      else addTo(team2, tot2, p);
+    });
+    return { team1, team2, avg1: tot1.ovr / team1.length, avg2: tot2.ovr / team2.length };
+  };
+
   const generateSpieltagTeams = () => {
     if (presentPlayers.length < 2) { alert('Mindestens 2 Spieler auswählen!'); return; }
-    const playerScores = presentPlayers.map((name) => ({ name, score: getOVR(name) }));
-    playerScores.sort((a, b) => b.score - a.score);
-    const team1 = [], team2 = [];
-    playerScores.forEach((p, idx) => (idx % 2 === 0 ? team1 : team2).push(p));
-    const avg = (arr) => arr.reduce((s, p) => s + p.score, 0) / arr.length;
-    setSpieltagTeams({ team1: { players: team1, avg: avg(team1) }, team2: { players: team2, avg: avg(team2) } });
+    const { team1, team2, avg1, avg2 } = buildBalancedTeams(presentPlayers);
+    setSpieltagTeams({ team1: { players: team1, avg: avg1 }, team2: { players: team2, avg: avg2 } });
   };
 
   const generateBalancedTeams = () => {
     if (players.length < 2) { alert('Mindestens 2 Spieler erforderlich!'); return; }
-    const playerScores = players.map((p) => ({ name: p.name, score: getOVR(p.name) }));
-    playerScores.sort((a, b) => b.score - a.score);
-    const team1 = [], team2 = [];
-    playerScores.forEach((p, idx) => (idx % 2 === 0 ? team1 : team2).push(p));
-    const avg = (arr) => (arr.reduce((s, p) => s + p.score, 0) / arr.length).toFixed(2);
-    setGeneratedTeams({ team1: { players: team1, avg: avg(team1) }, team2: { players: team2, avg: avg(team2) }, difference: Math.abs(avg(team1) - avg(team2)).toFixed(2) });
+    const { team1, team2, avg1, avg2 } = buildBalancedTeams(players.map((p) => p.name));
+    setGeneratedTeams({ team1: { players: team1, avg: avg1.toFixed(2) }, team2: { players: team2, avg: avg2.toFixed(2) }, difference: Math.abs(avg1 - avg2).toFixed(2) });
     showNotification('✅ Teams generiert!');
   };
 
@@ -797,7 +814,7 @@ export default function FussballManagerPWA() {
               {showBalanceLegend && (
                 <div style={{ ...styles.card, marginBottom: '1rem', padding: '1rem', fontSize: '0.8rem', lineHeight: '1.8' }}>
                   <div style={{ fontWeight: '600', color: GRUEN, marginBottom: '0.5rem' }}>⚖️ Ø Stärke = OVR pro Spieler</div>
-                  <div style={{ color: '#9ca3af', marginBottom: '0.75rem' }}>Jeder Spieler bekommt einen OVR-Wert (0–10). Die Teams werden per Snake-Draft so verteilt, dass der Ø OVR möglichst gleich ist.</div>
+                  <div style={{ color: '#9ca3af', marginBottom: '0.75rem' }}>Jeder Spieler bekommt einen OVR-Wert (0–10). Die Zuweisung erfolgt greedy: jeder Spieler kommt zu dem Team das aktuell schwächer ist — gewichtet nach OVR <span style={{ color: 'white' }}>(100%)</span> + Positionssumme <span style={{ color: 'white' }}>(20% je Position)</span>. So werden Klumpen (z.B. alle Stürmer in einem Team) verhindert.</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
                       <span style={{ color: GELB, fontWeight: '600', minWidth: '30px' }}>STR</span>
