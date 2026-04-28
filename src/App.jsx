@@ -180,14 +180,18 @@ export default function FussballManagerPWA() {
     const result = {};
     playerStats.forEach((stat) => {
       const playerName = stat.player_name;
-      const playerGameIds = new Set(
-        gamePlayers.filter((gp) => gp.player_name === playerName).map((gp) => gp.game_id)
-      );
+      const playerEntries = gamePlayers.filter((gp) => gp.player_name === playerName);
+      const playerGameIds = new Set(playerEntries.map((gp) => gp.game_id));
+      const playerTeamMap = {};
+      playerEntries.forEach((gp) => { playerTeamMap[gp.game_id] = gp.team; });
+
       const playedGames = playerGameIds.size;
       const missedGames = totalGames - playedGames;
       const attendance = totalGames > 0 ? ((playedGames / totalGames) * 100).toFixed(1) : '0.0';
+
+      // Anwesenheits-Streak (fix: alle Spiele prüfen, nicht nur letzte 5)
       let currentStreak = 0;
-      for (const g of games.slice(0, 5)) {
+      for (const g of games) {
         if (playerGameIds.has(g.game_id)) currentStreak += 1;
         else break;
       }
@@ -196,7 +200,28 @@ export default function FussballManagerPWA() {
         if (playerGameIds.has(g.game_id)) { streak += 1; maxStreak = Math.max(maxStreak, streak); }
         else streak = 0;
       }
-      result[playerName] = { playedGames, missedGames, attendance, currentStreak, maxStreak };
+
+      // Siegesserie (bricht bei Niederlage, Unentschieden oder Abwesenheit)
+      let currentWinStreak = 0;
+      for (const g of games) {
+        const team = playerTeamMap[g.game_id];
+        if (!team) break;
+        const isTeam1 = team === g.team1;
+        const won = isTeam1 ? g.score1 > g.score2 : g.score2 > g.score1;
+        if (won) currentWinStreak++;
+        else break;
+      }
+      let maxWinStreak = 0, winStreak = 0;
+      for (const g of [...games].reverse()) {
+        const team = playerTeamMap[g.game_id];
+        if (!team) { winStreak = 0; continue; }
+        const isTeam1 = team === g.team1;
+        const won = isTeam1 ? g.score1 > g.score2 : g.score2 > g.score1;
+        if (won) { winStreak++; maxWinStreak = Math.max(maxWinStreak, winStreak); }
+        else winStreak = 0;
+      }
+
+      result[playerName] = { playedGames, missedGames, attendance, currentStreak, maxStreak, currentWinStreak, maxWinStreak };
     });
     return result;
   }, [games, playerStats, gamePlayers]);
@@ -767,15 +792,17 @@ export default function FussballManagerPWA() {
 
           {showStatsLegend && (
             <div style={{ ...styles.card, marginBottom: '1rem', padding: '1rem', fontSize: '0.8rem', lineHeight: '1.8' }}>
-              <div style={{ fontWeight: '600', color: GRUEN, marginBottom: '0.5rem' }}>🏆 Anwesenheit & Form</div>
+              <div style={{ fontWeight: '600', color: GRUEN, marginBottom: '0.5rem' }}>📅 Anwesenheit & Form</div>
               <div><span style={{ color: 'white', fontWeight: '600' }}>Spiele</span> <span style={{ color: '#9ca3af' }}>= gespielte / Gesamtspiele</span></div>
               <div><span style={{ color: 'white', fontWeight: '600' }}>%</span> <span style={{ color: '#9ca3af' }}>= Anwesenheitsquote</span></div>
               <div><span style={{ color: 'white', fontWeight: '600' }}>🔥</span> <span style={{ color: '#9ca3af' }}>= aktuelle Anwesenheits-Streak</span></div>
-              <div><span style={{ color: 'white', fontWeight: '600' }}>⭐</span> <span style={{ color: '#9ca3af' }}>= persönliche Beststreak</span></div>
+              <div><span style={{ color: 'white', fontWeight: '600' }}>⭐</span> <span style={{ color: '#9ca3af' }}>= persönliche Beststreak (Anwesenheit)</span></div>
+              <div><span style={{ color: 'white', fontWeight: '600' }}>⚡</span> <span style={{ color: '#9ca3af' }}>= aktuelle Siegesserie</span></div>
+              <div><span style={{ color: 'white', fontWeight: '600' }}>🏆</span> <span style={{ color: '#9ca3af' }}>= persönliche Beststreak (Siege)</span></div>
               <div style={{ fontWeight: '600', color: GRUEN, marginTop: '0.75rem', marginBottom: '0.5rem' }}>⚽ Tore & Effizienz</div>
               <div><span style={{ color: 'white', fontWeight: '600' }}>Ø/Spiel</span> <span style={{ color: '#9ca3af' }}>= Ø Tore pro Spiel</span></div>
               <div><span style={{ color: 'white', fontWeight: '600' }}>T:G</span> <span style={{ color: '#9ca3af' }}>= Tore : Gegentore</span></div>
-              <div style={{ fontWeight: '600', color: GRUEN, marginTop: '0.75rem', marginBottom: '0.5rem' }}>🏅 Punkte & Erfolg</div>
+              <div style={{ fontWeight: '600', color: GRUEN, marginTop: '0.75rem', marginBottom: '0.5rem' }}>🏆 Punkte & Erfolg</div>
               <div><span style={{ color: 'white', fontWeight: '600' }}>Pkte</span> <span style={{ color: '#9ca3af' }}>= Punkte (Sieg=3, Unentschieden=1, Niederlage=0)</span></div>
               <div><span style={{ color: 'white', fontWeight: '600' }}>Ø</span> <span style={{ color: '#9ca3af' }}>= Ø Punkte pro Spiel</span></div>
               <div><span style={{ color: 'white', fontWeight: '600' }}>W%</span> <span style={{ color: '#9ca3af' }}>= Siegquote in %</span></div>
@@ -784,7 +811,7 @@ export default function FussballManagerPWA() {
           )}
 
           <div style={styles.section}>
-            <h2 style={styles.sectionTitle}>🏆 Anwesenheit & Form</h2>
+            <h2 style={styles.sectionTitle}>📅 Anwesenheit & Form</h2>
             <div style={styles.card}>
               {playerStats.length > 0 ? (
                 <div style={{ overflowX: 'auto' }}>
@@ -796,6 +823,8 @@ export default function FussballManagerPWA() {
                         <th style={{ textAlign: 'center', padding: '0.4rem', fontWeight: '600' }}>%</th>
                         <th style={{ textAlign: 'center', padding: '0.4rem', fontWeight: '600' }}>🔥</th>
                         <th style={{ textAlign: 'center', padding: '0.4rem', fontWeight: '600' }}>⭐</th>
+                        <th style={{ textAlign: 'center', padding: '0.4rem', fontWeight: '600' }}>⚡</th>
+                        <th style={{ textAlign: 'center', padding: '0.4rem', fontWeight: '600' }}>🏆</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -808,6 +837,8 @@ export default function FussballManagerPWA() {
                             <td style={{ textAlign: 'center', padding: '0.4rem', color: GRUEN, fontWeight: '600' }}>{ext.attendance}</td>
                             <td style={{ textAlign: 'center', padding: '0.4rem' }}>{ext.currentStreak}</td>
                             <td style={{ textAlign: 'center', padding: '0.4rem' }}>{ext.maxStreak}</td>
+                            <td style={{ textAlign: 'center', padding: '0.4rem', color: ext.currentWinStreak > 0 ? GRUEN : '#6b7280', fontWeight: ext.currentWinStreak > 0 ? '600' : 'normal' }}>{ext.currentWinStreak > 0 ? ext.currentWinStreak : '—'}</td>
+                            <td style={{ textAlign: 'center', padding: '0.4rem', color: ext.maxWinStreak > 0 ? GELB : '#6b7280' }}>{ext.maxWinStreak > 0 ? ext.maxWinStreak : '—'}</td>
                           </tr>
                         );
                       })}
@@ -850,7 +881,7 @@ export default function FussballManagerPWA() {
           </div>
 
           <div style={styles.section}>
-            <h2 style={styles.sectionTitle}>🏅 Punkte & Erfolg</h2>
+            <h2 style={styles.sectionTitle}>🏆 Punkte & Erfolg</h2>
             <div style={styles.card}>
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
