@@ -698,53 +698,37 @@ export default function FussballManagerPWA() {
             </div>
           )}
 
+          {/* ── Saison-Überblick ───────────────────────────────────────── */}
           <div style={styles.section}>
-            <h2 style={styles.sectionTitle}>📊 Quick Stats</h2>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-              <div style={{ ...styles.card, marginBottom: 0, padding: '1rem', textAlign: 'center' }}>
-                <div style={{ fontSize: '2rem', fontWeight: 'bold', color: GRUEN }}>{players.length}</div>
-                <div style={{ fontSize: '0.85rem', color: '#9ca3af' }}>Spieler</div>
-              </div>
-              <div style={{ ...styles.card, marginBottom: 0, padding: '1rem', textAlign: 'center' }}>
-                <div style={{ fontSize: '2rem', fontWeight: 'bold', color: GRUEN }}>{games.length}</div>
-                <div style={{ fontSize: '0.85rem', color: '#9ca3af' }}>Spiele</div>
-              </div>
-              <div style={{ ...styles.card, marginBottom: 0, padding: '1rem', textAlign: 'center' }}>
-                <div style={{ fontSize: '2rem', fontWeight: 'bold', color: GRUEN }}>{goals.length}</div>
-                <div style={{ fontSize: '0.85rem', color: '#9ca3af' }}>Tore gesamt</div>
-              </div>
-              <div style={{ ...styles.card, marginBottom: 0, padding: '1rem', textAlign: 'center' }}>
-                <div style={{ fontSize: '2rem', fontWeight: 'bold', color: GRUEN }}>{games.length > 0 ? (goals.length / games.length).toFixed(1) : '—'}</div>
-                <div style={{ fontSize: '0.85rem', color: '#9ca3af' }}>Ø Tore/Spiel</div>
-              </div>
-              {pointsLeader && (
-                <div style={{ ...styles.card, marginBottom: 0, padding: '1rem', textAlign: 'center' }}>
-                  <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginBottom: '0.25rem' }}>🏅 Führender</div>
-                  <div style={{ fontSize: '1rem', fontWeight: '600', color: 'white', marginBottom: '0.25rem' }}>{pointsLeader.player_name.substring(0, 10)}</div>
-                  <div style={{ fontSize: '1.25rem', fontWeight: 'bold', color: GRUEN }}>{pointsLeader.points} Pkte</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '0.5rem', marginBottom: '1.25rem' }}>
+              {[
+                { value: players.length, label: 'Spieler' },
+                { value: games.length, label: 'Spiele' },
+                { value: goals.length, label: 'Tore' },
+                { value: games.length > 0 ? (goals.length / games.length).toFixed(1) : '—', label: 'Ø T/S' },
+              ].map(({ value, label }) => (
+                <div key={label} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(16,185,129,0.15)', borderRadius: '10px', padding: '0.6rem 0.25rem', textAlign: 'center' }}>
+                  <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: GRUEN }}>{value}</div>
+                  <div style={{ fontSize: '0.65rem', color: '#9ca3af', marginTop: '0.15rem' }}>{label}</div>
                 </div>
-              )}
-              {topScorer && (
-                <div style={{ ...styles.card, marginBottom: 0, padding: '1rem', textAlign: 'center' }}>
-                  <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginBottom: '0.25rem' }}>🎯 Torschütze</div>
-                  <div style={{ fontSize: '1rem', fontWeight: '600', color: 'white', marginBottom: '0.25rem' }}>{topScorer.player_name.substring(0, 10)}</div>
-                  <div style={{ fontSize: '1.25rem', fontWeight: 'bold', color: GRUEN }}>{topScorer.total_goals} ⚽</div>
+              ))}
+            </div>
+
+            <h2 style={styles.sectionTitle}>🏆 Saison-Awards</h2>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+              {[
+                { show: !!pointsLeader, medal: '🥇', title: 'MVP', name: pointsLeader?.player_name, value: `${pointsLeader?.points} Pkte`, color: '#f59e0b' },
+                { show: !!topScorer, medal: '⚽', title: 'Torschützen-König', name: topScorer?.player_name, value: `${topScorer?.total_goals} Tore`, color: BLAU },
+                { show: !!attLeader, medal: '📅', title: 'Anwesenheits-König', name: attLeader?.player_name, value: `${(extendedStats[attLeader?.player_name] || {}).attendance}%`, color: GRUEN },
+                { show: !!(effLeader && effLeaderRatio), medal: '⚡', title: 'Effizienz-König', name: effLeader?.player_name, value: `${effLeaderRatio} ⚽/Spiel`, color: GELB },
+              ].filter((a) => a.show).map(({ medal, title, name, value, color }) => (
+                <div key={title} style={{ background: 'rgba(255,255,255,0.04)', border: `1px solid ${color}40`, borderRadius: '12px', padding: '1rem', textAlign: 'center' }}>
+                  <div style={{ fontSize: '1.75rem', marginBottom: '0.35rem' }}>{medal}</div>
+                  <div style={{ fontSize: '0.65rem', color, fontWeight: '700', letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: '0.4rem' }}>{title}</div>
+                  <div style={{ fontSize: '1rem', fontWeight: '700', color: 'white', marginBottom: '0.25rem' }}>{name?.substring(0, 12)}</div>
+                  <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color }}>{value}</div>
                 </div>
-              )}
-              {attLeader && (
-                <div style={{ ...styles.card, marginBottom: 0, padding: '1rem', textAlign: 'center' }}>
-                  <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginBottom: '0.25rem' }}>📅 Anwesenheit</div>
-                  <div style={{ fontSize: '1rem', fontWeight: '600', color: 'white', marginBottom: '0.25rem' }}>{attLeader.player_name.substring(0, 10)}</div>
-                  <div style={{ fontSize: '1.25rem', fontWeight: 'bold', color: GRUEN }}>{(extendedStats[attLeader.player_name] || {}).attendance}%</div>
-                </div>
-              )}
-              {effLeader && effLeaderRatio && (
-                <div style={{ ...styles.card, marginBottom: 0, padding: '1rem', textAlign: 'center' }}>
-                  <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginBottom: '0.25rem' }}>⚡ Effizienz</div>
-                  <div style={{ fontSize: '1rem', fontWeight: '600', color: 'white', marginBottom: '0.25rem' }}>{effLeader.player_name.substring(0, 10)}</div>
-                  <div style={{ fontSize: '1.25rem', fontWeight: 'bold', color: GRUEN }}>{effLeaderRatio} ⚽/Spiel</div>
-                </div>
-              )}
+              ))}
             </div>
           </div>
 
