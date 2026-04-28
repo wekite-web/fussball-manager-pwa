@@ -47,6 +47,7 @@ export default function FussballManagerPWA() {
   const [showShareCard, setShowShareCard] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const [showStatsLegend, setShowStatsLegend] = useState(false);
+  const [showBalanceLegend, setShowBalanceLegend] = useState(false);
   const [presentPlayers, setPresentPlayers] = useState([]);
   const [spieltagTeams, setSpieltagTeams] = useState(null);
 
@@ -801,7 +802,38 @@ export default function FussballManagerPWA() {
 
           {spieltagTeams && (
             <div style={styles.section}>
-              <h2 style={styles.sectionTitle}>⚖️ Team Balance</h2>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', paddingBottom: '0.75rem', borderBottom: `2px solid ${GRUEN}` }}>
+                <h2 style={{ ...styles.sectionTitle, marginBottom: 0, paddingBottom: 0, borderBottom: 'none' }}>⚖️ Team Balance</h2>
+                <button
+                  onClick={() => setShowBalanceLegend((v) => !v)}
+                  style={{ background: 'none', border: `1px solid ${showBalanceLegend ? GRUEN : 'rgba(255,255,255,0.2)'}`, borderRadius: '0.5rem', color: showBalanceLegend ? GRUEN : '#9ca3af', padding: '0.3rem 0.75rem', fontSize: '0.85rem', cursor: 'pointer' }}
+                >
+                  ℹ️ Legende
+                </button>
+              </div>
+              {showBalanceLegend && (
+                <div style={{ ...styles.card, marginBottom: '1rem', padding: '1rem', fontSize: '0.8rem', lineHeight: '1.8' }}>
+                  <div style={{ fontWeight: '600', color: GRUEN, marginBottom: '0.5rem' }}>⚖️ Ø Stärke = OVR pro Spieler</div>
+                  <div style={{ color: '#9ca3af', marginBottom: '0.75rem' }}>Jeder Spieler bekommt einen OVR-Wert (0–10). Die Teams werden per Snake-Draft so verteilt, dass der Ø OVR möglichst gleich ist.</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <span style={{ color: GELB, fontWeight: '600', minWidth: '30px' }}>STR</span>
+                      <span style={{ color: '#9ca3af' }}>Technik — Ø Sturm / MF / Abwehr · 60%</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <span style={{ color: GRUEN, fontWeight: '600', minWidth: '30px' }}>ERF</span>
+                      <span style={{ color: '#9ca3af' }}>Erfolg — Siegquote × 10 · 25%</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <span style={{ color: BLAU, fontWeight: '600', minWidth: '30px' }}>EFF</span>
+                      <span style={{ color: '#9ca3af' }}>Effizienz — Tore/Spiel × 5 · 15%</span>
+                    </div>
+                  </div>
+                  <div style={{ marginTop: '0.75rem', borderTop: '1px solid rgba(16,185,129,0.15)', paddingTop: '0.75rem', color: '#9ca3af' }}>
+                    Balance % = kleinerer OVR ÷ größerer OVR × 100
+                  </div>
+                </div>
+              )}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                 <div style={{ ...styles.card, padding: '1rem' }}>
                   <div style={{ color: GELB, fontWeight: '700', marginBottom: '0.75rem', fontSize: '1rem' }}>🟡 GELB</div>
