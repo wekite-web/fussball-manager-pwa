@@ -44,6 +44,9 @@ export default function FussballManagerPWA() {
   const [csvState, setCsvState] = useState({
     status: 'idle', valid: [], warnings: [], errors: [], progress: 0, total: 0
   });
+  const [showShareCard, setShowShareCard] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
+  const [showStatsLegend, setShowStatsLegend] = useState(false);
 
   // ─── INITIAL LOAD ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -530,6 +533,16 @@ export default function FussballManagerPWA() {
 
   // ─── VIEWS ─────────────────────────────────────────────────────────────────
   if (view === 'home') {
+    const pointsLeader = playerStats[0] || null;
+    const topScorer = topScorers[0] || null;
+    const attLeader = playerStats.length > 0
+      ? playerStats.reduce((best, stat) => {
+          const a = parseFloat((extendedStats[stat.player_name] || {}).attendance || 0);
+          const b = parseFloat((extendedStats[best.player_name] || {}).attendance || 0);
+          return a > b ? stat : best;
+        }, playerStats[0])
+      : null;
+
     return (
       <div style={styles.container}>
           <TopNav />
@@ -540,8 +553,33 @@ export default function FussballManagerPWA() {
               <button style={{ ...styles.button, ...styles.buttonSecondary }} onClick={() => setView('players')}>👥 Spieler verwalten</button>
               <button style={{ ...styles.button, ...styles.buttonSecondary }} onClick={() => setView('csv')}>📁 CSV Import/Export</button>
               <button style={{ ...styles.button, ...styles.buttonSecondary }} onClick={generateBalancedTeams}>🎯 Teams generieren</button>
+              <button style={{ ...styles.button, ...styles.buttonSecondary }} onClick={() => setShowShareCard((v) => !v)}>🔗 App teilen</button>
             </div>
           )}
+
+          {isAdminMode && showShareCard && (() => {
+            const appUrl = window.location.origin;
+            const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(appUrl)}&format=png`;
+            const handleCopy = () => {
+              navigator.clipboard.writeText(appUrl).then(() => {
+                setLinkCopied(true);
+                setTimeout(() => setLinkCopied(false), 2000);
+              });
+            };
+            return (
+              <div style={styles.section}>
+                <h2 style={styles.sectionTitle}>🔗 App teilen</h2>
+                <div style={{ ...styles.card, textAlign: 'center', padding: '1.5rem' }}>
+                  <img src={qrUrl} alt="QR Code" style={{ width: 200, height: 200, borderRadius: '0.5rem', background: 'white', padding: '0.5rem', marginBottom: '1rem' }} />
+                  <div style={{ fontSize: '0.8rem', color: '#9ca3af', marginBottom: '0.5rem' }}>oder Link teilen:</div>
+                  <div style={{ fontSize: '0.85rem', color: GRUEN, wordBreak: 'break-all', marginBottom: '1rem', padding: '0.5rem', background: 'rgba(16,185,129,0.1)', borderRadius: '0.5rem' }}>{appUrl}</div>
+                  <button onClick={handleCopy} style={{ ...styles.button, ...styles.buttonSecondary, marginBottom: 0 }}>
+                    {linkCopied ? '✅ Kopiert!' : '📋 Link kopieren'}
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
 
           {generatedTeams && (
             <div style={styles.section}>
@@ -571,6 +609,35 @@ export default function FussballManagerPWA() {
                 <div style={{ fontSize: '2rem', fontWeight: 'bold', color: GRUEN }}>{games.length}</div>
                 <div style={{ fontSize: '0.85rem', color: '#9ca3af' }}>Spiele</div>
               </div>
+              <div style={{ ...styles.card, marginBottom: 0, padding: '1rem', textAlign: 'center' }}>
+                <div style={{ fontSize: '2rem', fontWeight: 'bold', color: GRUEN }}>{goals.length}</div>
+                <div style={{ fontSize: '0.85rem', color: '#9ca3af' }}>Tore gesamt</div>
+              </div>
+              <div style={{ ...styles.card, marginBottom: 0, padding: '1rem', textAlign: 'center' }}>
+                <div style={{ fontSize: '2rem', fontWeight: 'bold', color: GRUEN }}>{games.length > 0 ? (goals.length / games.length).toFixed(1) : '—'}</div>
+                <div style={{ fontSize: '0.85rem', color: '#9ca3af' }}>Ø Tore/Spiel</div>
+              </div>
+              {pointsLeader && (
+                <div style={{ ...styles.card, marginBottom: 0, padding: '1rem', textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginBottom: '0.25rem' }}>🏅 Führender</div>
+                  <div style={{ fontSize: '1rem', fontWeight: '600', color: 'white', marginBottom: '0.25rem' }}>{pointsLeader.player_name.substring(0, 10)}</div>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 'bold', color: GRUEN }}>{pointsLeader.points} Pkte</div>
+                </div>
+              )}
+              {topScorer && (
+                <div style={{ ...styles.card, marginBottom: 0, padding: '1rem', textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginBottom: '0.25rem' }}>🎯 Torschütze</div>
+                  <div style={{ fontSize: '1rem', fontWeight: '600', color: 'white', marginBottom: '0.25rem' }}>{topScorer.player_name.substring(0, 10)}</div>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 'bold', color: GRUEN }}>{topScorer.total_goals} ⚽</div>
+                </div>
+              )}
+              {attLeader && (
+                <div style={{ ...styles.card, marginBottom: 0, padding: '1rem', textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginBottom: '0.25rem' }}>📅 Anwesenheit</div>
+                  <div style={{ fontSize: '1rem', fontWeight: '600', color: 'white', marginBottom: '0.25rem' }}>{attLeader.player_name.substring(0, 10)}</div>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 'bold', color: GRUEN }}>{(extendedStats[attLeader.player_name] || {}).attendance}%</div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -607,6 +674,34 @@ export default function FussballManagerPWA() {
       <div style={styles.container}>
         <TopNav />
         <div style={styles.content}>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.5rem' }}>
+            <button
+              onClick={() => setShowStatsLegend((v) => !v)}
+              style={{ background: 'none', border: `1px solid ${showStatsLegend ? GRUEN : 'rgba(255,255,255,0.2)'}`, borderRadius: '0.5rem', color: showStatsLegend ? GRUEN : '#9ca3af', padding: '0.3rem 0.75rem', fontSize: '0.85rem', cursor: 'pointer' }}
+            >
+              ℹ️ Legende
+            </button>
+          </div>
+
+          {showStatsLegend && (
+            <div style={{ ...styles.card, marginBottom: '1rem', padding: '1rem', fontSize: '0.8rem', lineHeight: '1.8' }}>
+              <div style={{ fontWeight: '600', color: GRUEN, marginBottom: '0.5rem' }}>🏆 Anwesenheit & Form</div>
+              <div><span style={{ color: 'white', fontWeight: '600' }}>Spiele</span> <span style={{ color: '#9ca3af' }}>= gespielte / Gesamtspiele</span></div>
+              <div><span style={{ color: 'white', fontWeight: '600' }}>%</span> <span style={{ color: '#9ca3af' }}>= Anwesenheitsquote</span></div>
+              <div><span style={{ color: 'white', fontWeight: '600' }}>🔥</span> <span style={{ color: '#9ca3af' }}>= aktuelle Anwesenheits-Streak</span></div>
+              <div><span style={{ color: 'white', fontWeight: '600' }}>⭐</span> <span style={{ color: '#9ca3af' }}>= persönliche Beststreak</span></div>
+              <div style={{ fontWeight: '600', color: GRUEN, marginTop: '0.75rem', marginBottom: '0.5rem' }}>⚽ Tore & Effizienz</div>
+              <div><span style={{ color: 'white', fontWeight: '600' }}>Ø/Spiel</span> <span style={{ color: '#9ca3af' }}>= Ø Tore pro Spiel</span></div>
+              <div><span style={{ color: 'white', fontWeight: '600' }}>T:G</span> <span style={{ color: '#9ca3af' }}>= Tore : Gegentore</span></div>
+              <div style={{ fontWeight: '600', color: GRUEN, marginTop: '0.75rem', marginBottom: '0.5rem' }}>🏅 Punkte & Erfolg</div>
+              <div><span style={{ color: 'white', fontWeight: '600' }}>Pkte</span> <span style={{ color: '#9ca3af' }}>= Punkte (Sieg=3, Unentschieden=1, Niederlage=0)</span></div>
+              <div><span style={{ color: 'white', fontWeight: '600' }}>Ø</span> <span style={{ color: '#9ca3af' }}>= Ø Punkte pro Spiel</span></div>
+              <div><span style={{ color: 'white', fontWeight: '600' }}>W%</span> <span style={{ color: '#9ca3af' }}>= Siegquote in %</span></div>
+              <div><span style={{ color: GELB, fontWeight: '600' }}>T</span> <span style={{ color: '#9ca3af' }}>= Tauschspieler-Einsätze (immer 1,5 Pkte)</span></div>
+            </div>
+          )}
+
           <div style={styles.section}>
             <h2 style={styles.sectionTitle}>🏆 Anwesenheit & Form</h2>
             <div style={styles.card}>
