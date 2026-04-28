@@ -283,7 +283,7 @@ export default function FussballManagerPWA() {
     }
   };
 
-  // Greedy-Zuweisung: OVR + Positionsverteilung gleichzeitig ausbalancieren
+  // Greedy-Zuweisung: minimiert Abweichung in Sturm, MF, AW und OVR separat
   const buildBalancedTeams = (names) => {
     const data = names.map((name) => {
       const pos = getPlayerPositions(name);
@@ -297,12 +297,22 @@ export default function FussballManagerPWA() {
     const addTo = (team, tot, p) => {
       team.push(p); tot.ovr += p.ovr; tot.sturm += p.sturm; tot.mittelfeld += p.mittelfeld; tot.abwehr += p.abwehr;
     };
-    // Kombinierter Score: OVR zählt 100%, jede Position 20% — verhindert Klumpenbildung
-    const score = (tot) => tot.ovr + 0.2 * (tot.sturm + tot.mittelfeld + tot.abwehr);
+    // Gesamtabweichung wenn p zu team1 (true) oder team2 (false) geht
+    const imbalanceIf = (toTeam1, p) => {
+      const s1 = tot1.sturm + (toTeam1 ? p.sturm : 0);
+      const s2 = tot2.sturm + (toTeam1 ? 0 : p.sturm);
+      const m1 = tot1.mittelfeld + (toTeam1 ? p.mittelfeld : 0);
+      const m2 = tot2.mittelfeld + (toTeam1 ? 0 : p.mittelfeld);
+      const a1 = tot1.abwehr + (toTeam1 ? p.abwehr : 0);
+      const a2 = tot2.abwehr + (toTeam1 ? 0 : p.abwehr);
+      const o1 = tot1.ovr + (toTeam1 ? p.ovr : 0);
+      const o2 = tot2.ovr + (toTeam1 ? 0 : p.ovr);
+      return Math.abs(s1 - s2) + Math.abs(m1 - m2) + Math.abs(a1 - a2) + Math.abs(o1 - o2);
+    };
     data.forEach((p) => {
       if (team1.length >= maxSize) addTo(team2, tot2, p);
       else if (team2.length >= maxSize) addTo(team1, tot1, p);
-      else if (score(tot1) <= score(tot2)) addTo(team1, tot1, p);
+      else if (imbalanceIf(true, p) <= imbalanceIf(false, p)) addTo(team1, tot1, p);
       else addTo(team2, tot2, p);
     });
     return { team1, team2, avg1: tot1.ovr / team1.length, avg2: tot2.ovr / team2.length };
@@ -814,7 +824,7 @@ export default function FussballManagerPWA() {
               {showBalanceLegend && (
                 <div style={{ ...styles.card, marginBottom: '1rem', padding: '1rem', fontSize: '0.8rem', lineHeight: '1.8' }}>
                   <div style={{ fontWeight: '600', color: GRUEN, marginBottom: '0.5rem' }}>⚖️ Ø Stärke = OVR pro Spieler</div>
-                  <div style={{ color: '#9ca3af', marginBottom: '0.75rem' }}>Jeder Spieler bekommt einen OVR-Wert (0–10). Die Zuweisung erfolgt greedy: jeder Spieler kommt zu dem Team das aktuell schwächer ist — gewichtet nach OVR <span style={{ color: 'white' }}>(100%)</span> + Positionssumme <span style={{ color: 'white' }}>(20% je Position)</span>. So werden Klumpen (z.B. alle Stürmer in einem Team) verhindert.</div>
+                  <div style={{ color: '#9ca3af', marginBottom: '0.75rem' }}>Jeder Spieler wird dem Team zugewiesen das die geringste Gesamtabweichung in allen 4 Dimensionen erzeugt: Sturm, Mittelfeld, Abwehr und OVR werden <span style={{ color: 'white' }}>separat</span> ausbalanciert. So landen nicht alle Stürmer im selben Team.</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
                       <span style={{ color: GELB, fontWeight: '600', minWidth: '30px' }}>STR</span>
