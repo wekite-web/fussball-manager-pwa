@@ -813,7 +813,7 @@ export default function FussballManagerPWA() {
               <div><span style={{ color: 'white', fontWeight: '600' }}>🏆</span> <span style={{ color: '#9ca3af' }}>= persönliche Beststreak (Siege)</span></div>
               <div style={{ fontWeight: '600', color: GRUEN, marginTop: '0.75rem', marginBottom: '0.5rem' }}>⚽ Tore & Effizienz</div>
               <div><span style={{ color: 'white', fontWeight: '600' }}>Ø/Spiel</span> <span style={{ color: '#9ca3af' }}>= Ø Tore pro Spiel</span></div>
-              <div><span style={{ color: 'white', fontWeight: '600' }}>T:G</span> <span style={{ color: '#9ca3af' }}>= Tore : Gegentore</span></div>
+              <div><span style={{ color: 'white', fontWeight: '600' }}>T:G</span> <span style={{ color: '#9ca3af' }}>= Team-Tore : Team-Gegentore (wenn dieser Spieler dabei ist)</span></div>
               <div style={{ fontWeight: '600', color: GRUEN, marginTop: '0.75rem', marginBottom: '0.5rem' }}>🏆 Punkte & Erfolg</div>
               <div><span style={{ color: 'white', fontWeight: '600' }}>Pkte</span> <span style={{ color: '#9ca3af' }}>= Punkte (Sieg=3, Unentschieden=1, Niederlage=0)</span></div>
               <div><span style={{ color: 'white', fontWeight: '600' }}>Ø</span> <span style={{ color: '#9ca3af' }}>= Ø Punkte pro Spiel</span></div>
@@ -916,7 +916,7 @@ export default function FussballManagerPWA() {
                         </td>
                         <td style={{ textAlign: 'center', padding: '0.4rem', color: GRUEN, fontWeight: '600' }}>{stat.points}</td>
                         <td style={{ textAlign: 'center', padding: '0.4rem' }}>{stat.games_played > 0 ? (stat.points / stat.games_played).toFixed(2) : '0.00'}</td>
-                        <td style={{ textAlign: 'center', padding: '0.4rem' }}>{stat.games_played > 0 ? ((stat.wins / stat.games_played) * 100).toFixed(0) : '0'}%</td>
+                        <td style={{ textAlign: 'center', padding: '0.4rem' }}>{(stat.games_played - stat.swaps) > 0 ? ((stat.wins / (stat.games_played - stat.swaps)) * 100).toFixed(0) : '0'}%</td>
                         <td style={{ textAlign: 'center', padding: '0.4rem', color: stat.swaps > 0 ? GELB : '#6b7280' }}>{stat.swaps > 0 ? stat.swaps : '—'}</td>
                       </tr>
                     ))}
@@ -987,9 +987,9 @@ export default function FussballManagerPWA() {
                       </div>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-around', fontSize: '0.8rem', color: '#9ca3af', paddingTop: '0.75rem', borderTop: `1px solid rgba(16,185,129,0.1)` }}>
-                      <div>T: {pairing.team1Goals}</div>
+                      <div>⚽ {pairing.team1Goals}</div>
                       <div>U: {pairing.draws}</div>
-                      <div>T: {pairing.team2Goals}</div>
+                      <div>⚽ {pairing.team2Goals}</div>
                     </div>
                   </div>
                 );
@@ -997,16 +997,6 @@ export default function FussballManagerPWA() {
             </div>
           </div>
 
-          <div style={styles.section}>
-            <h2 style={styles.sectionTitle}>🎯 Position-Analyse</h2>
-            <div style={styles.card}>
-              <div style={{ backgroundColor: 'rgba(16,185,129,0.1)', padding: '1rem', borderRadius: '8px', fontSize: '0.85rem' }}>
-                <div style={{ marginBottom: '0.5rem' }}>🏃 Sturm: {players.length} Spieler</div>
-                <div style={{ marginBottom: '0.5rem' }}>🎯 Mittelfeld: {players.length} Spieler</div>
-                <div>🛡️ Abwehr: {players.length} Spieler</div>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     );
