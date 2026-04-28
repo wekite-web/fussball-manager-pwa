@@ -559,8 +559,9 @@ export default function FussballManagerPWA() {
       <div style={styles.navBar}>
         {[
           { key: 'home', label: '🏠 Home' },
-          { key: 'spieltag', label: '🗓️ Spieltag' },
-          { key: 'stats', label: '📊 Tabelle' },
+          { key: 'spieltag', label: '🗓️ Tag' },
+          { key: 'ergebnisse', label: '📋 Spiele' },
+          { key: 'stats', label: '📊 Stats' },
           { key: 'scorers', label: '⚽ Tore' },
           { key: 'statspro', label: '⭐ Pro' },
         ].map(({ key, label }) => (
@@ -803,6 +804,97 @@ export default function FussballManagerPWA() {
               </div>
             </div>
           )}
+        </div>
+      </div>
+    );
+  }
+
+  if (view === 'ergebnisse') {
+    return (
+      <div style={styles.container}>
+        <TopNav />
+        <div style={styles.content}>
+          <div style={styles.section}>
+            <h2 style={styles.sectionTitle}>📋 Spielergebnisse</h2>
+            {games.length === 0 ? (
+              <div style={{ color: '#6b7280', textAlign: 'center', padding: '2rem' }}>Noch keine Spiele erfasst</div>
+            ) : games.map((game) => {
+              const gPlayers = gamePlayers.filter((gp) => gp.game_id === game.game_id);
+              const gGoals = goals.filter((g) => g.game_id === game.game_id);
+              const gSwaps = gameSwaps.filter((s) => s.game_id === game.game_id);
+              const swapSet = new Set(gSwaps.map((s) => s.player_name));
+
+              const team1Players = gPlayers.filter((gp) => gp.team === game.team1).map((gp) => gp.player_name);
+              const team2Players = gPlayers.filter((gp) => gp.team === game.team2).map((gp) => gp.player_name);
+
+              // Tore aggregieren: { player_name: { team, count } }
+              const goalMap = {};
+              gGoals.forEach((g) => {
+                if (!goalMap[g.player_name]) goalMap[g.player_name] = { team: g.team, count: 0 };
+                goalMap[g.player_name].count += 1;
+              });
+              const scorerList = Object.entries(goalMap).sort((a, b) => b[1].count - a[1].count);
+
+              const isGelbWin = game.score1 > game.score2;
+              const isBlauWin = game.score2 > game.score1;
+
+              return (
+                <div key={game.id} style={{ ...styles.card, padding: '1rem', marginBottom: '1rem' }}>
+                  {/* Datum */}
+                  <div style={{ fontSize: '0.8rem', color: '#9ca3af', marginBottom: '0.75rem' }}>
+                    📅 {new Date(game.date).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' })}
+                    {isAdminMode && (
+                      <span style={{ marginLeft: '0.75rem' }}>
+                        <button onClick={() => startEditGame(game)} style={{ background: 'none', border: 'none', color: BLAU, cursor: 'pointer', fontSize: '0.85rem', padding: '0 0.25rem' }}>✏️</button>
+                        <button onClick={() => deleteGame(game.id, game.game_id)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '0.85rem', padding: '0 0.25rem' }}>🗑️</button>
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Ergebnis */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                    <span style={{ color: GELB, fontWeight: isGelbWin ? '700' : '400', fontSize: '0.95rem' }}>🟡 GELB</span>
+                    <span style={{ fontSize: '1.75rem', fontWeight: 'bold', color: GRUEN, letterSpacing: '0.05em' }}>{game.score1} : {game.score2}</span>
+                    <span style={{ color: BLAU, fontWeight: isBlauWin ? '700' : '400', fontSize: '0.95rem' }}>BLAU 🔵</span>
+                  </div>
+
+                  {/* Aufstellung */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: gGoals.length > 0 ? '1rem' : 0 }}>
+                    <div>
+                      <div style={{ fontSize: '0.75rem', color: GELB, fontWeight: '600', marginBottom: '0.35rem' }}>Aufstellung</div>
+                      {team1Players.map((name) => (
+                        <div key={name} style={{ fontSize: '0.8rem', color: swapSet.has(name) ? GELB : '#d1d5db', padding: '0.1rem 0' }}>
+                          {swapSet.has(name) ? '🔄 ' : ''}{name}
+                        </div>
+                      ))}
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '0.75rem', color: BLAU, fontWeight: '600', marginBottom: '0.35rem' }}>Aufstellung</div>
+                      {team2Players.map((name) => (
+                        <div key={name} style={{ fontSize: '0.8rem', color: swapSet.has(name) ? GELB : '#d1d5db', padding: '0.1rem 0' }}>
+                          {swapSet.has(name) ? '🔄 ' : ''}{name}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Torschützen */}
+                  {scorerList.length > 0 && (
+                    <div style={{ borderTop: '1px solid rgba(16,185,129,0.15)', paddingTop: '0.75rem' }}>
+                      <div style={{ fontSize: '0.75rem', color: GRUEN, fontWeight: '600', marginBottom: '0.35rem' }}>⚽ Torschützen</div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                        {scorerList.map(([name, { team, count }]) => (
+                          <span key={name} style={{ fontSize: '0.8rem', padding: '0.2rem 0.5rem', borderRadius: '999px', background: team === game.team1 ? 'rgba(251,191,36,0.15)' : 'rgba(59,130,246,0.15)', color: team === game.team1 ? GELB : BLAU, border: `1px solid ${team === game.team1 ? 'rgba(251,191,36,0.3)' : 'rgba(59,130,246,0.3)'}` }}>
+                            {name}{count > 1 ? ` ×${count}` : ''}{swapSet.has(name) ? ' 🔄' : ''}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
     );
