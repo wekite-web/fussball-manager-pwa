@@ -249,6 +249,23 @@ export default function FussballManagerPWA() {
     [topScorers, playerStats]
   );
 
+  // OVR = STR 60% + Win Rate 25% + Tore/Spiel 15% — Fallback auf STR wenn < 3 normale Spiele
+  const getOVR = useCallback(
+    (playerName) => {
+      const pos = getPlayerPositions(playerName);
+      const str = (pos.sturm + pos.mittelfeld + pos.abwehr) / 3;
+      const stat = playerStats.find((s) => s.player_name === playerName);
+      const normalGames = stat ? stat.games_played - stat.swaps : 0;
+      if (normalGames < 3) return parseFloat(str.toFixed(1));
+      const scorer = topScorers.find((s) => s.player_name === playerName);
+      const goals = scorer ? scorer.total_goals : 0;
+      const erf = Math.min((stat.wins / normalGames) * 10, 10);
+      const eff = Math.min((goals / normalGames) * 5, 10);
+      return parseFloat((str * 0.6 + erf * 0.25 + eff * 0.15).toFixed(1));
+    },
+    [getPlayerPositions, playerStats, topScorers]
+  );
+
   const savePlayerPosition = async (playerName, sturm, mittelfeld, abwehr) => {
     try {
       const { data: existing } = await supabase.from('player_positions').select('*').eq('player_name', playerName);
@@ -267,10 +284,7 @@ export default function FussballManagerPWA() {
 
   const generateSpieltagTeams = () => {
     if (presentPlayers.length < 2) { alert('Mindestens 2 Spieler auswählen!'); return; }
-    const playerScores = presentPlayers.map((name) => {
-      const pos = getPlayerPositions(name);
-      return { name, score: (pos.sturm + pos.mittelfeld + pos.abwehr) / 3 };
-    });
+    const playerScores = presentPlayers.map((name) => ({ name, score: getOVR(name) }));
     playerScores.sort((a, b) => b.score - a.score);
     const team1 = [], team2 = [];
     playerScores.forEach((p, idx) => (idx % 2 === 0 ? team1 : team2).push(p));
@@ -280,10 +294,7 @@ export default function FussballManagerPWA() {
 
   const generateBalancedTeams = () => {
     if (players.length < 2) { alert('Mindestens 2 Spieler erforderlich!'); return; }
-    const playerScores = players.map((p) => {
-      const pos = getPlayerPositions(p.name);
-      return { name: p.name, score: (pos.sturm + pos.mittelfeld + pos.abwehr) / 3 };
-    });
+    const playerScores = players.map((p) => ({ name: p.name, score: getOVR(p.name) }));
     playerScores.sort((a, b) => b.score - a.score);
     const team1 = [], team2 = [];
     playerScores.forEach((p, idx) => (idx % 2 === 0 ? team1 : team2).push(p));
@@ -1140,6 +1151,48 @@ export default function FussballManagerPWA() {
             </div>
           </div>
 
+          <div style={styles.section}>
+            <h2 style={styles.sectionTitle}>🎮 Spielerbewertung</h2>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+              {playerStats.map((stat) => {
+                const pos = getPlayerPositions(stat.player_name);
+                const str = parseFloat(((pos.sturm + pos.mittelfeld + pos.abwehr) / 3).toFixed(1));
+                const normalGames = stat.games_played - stat.swaps;
+                const scorer = topScorers.find((s) => s.player_name === stat.player_name);
+                const goals = scorer ? scorer.total_goals : 0;
+                const hasData = normalGames >= 3;
+                const erf = hasData ? parseFloat(Math.min((stat.wins / normalGames) * 10, 10).toFixed(1)) : null;
+                const eff = hasData ? parseFloat(Math.min((goals / normalGames) * 5, 10).toFixed(1)) : null;
+                const ovr = getOVR(stat.player_name);
+                const ovrColor = ovr >= 8 ? GRUEN : ovr >= 6 ? GELB : '#ef4444';
+                const StatBar = ({ label, value, color }) => (
+                  <div style={{ marginBottom: '0.35rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', color: '#9ca3af', marginBottom: '0.15rem' }}>
+                      <span>{label}</span><span style={{ color, fontWeight: '600' }}>{value !== null ? value.toFixed(1) : '—'}</span>
+                    </div>
+                    <div style={{ background: 'rgba(255,255,255,0.1)', borderRadius: '999px', height: '5px' }}>
+                      <div style={{ height: '100%', width: value !== null ? `${(value / 10) * 100}%` : '0%', background: color, borderRadius: '999px' }} />
+                    </div>
+                  </div>
+                );
+                return (
+                  <div key={stat.player_name} style={{ background: 'rgba(255,255,255,0.04)', border: `1px solid rgba(16,185,129,0.15)`, borderRadius: '10px', padding: '0.75rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
+                      <span style={{ fontSize: '0.8rem', fontWeight: '600', color: 'white' }}>
+                        {stat.player_name.substring(0, 10)}{admins.some((a) => a.player_name === stat.player_name) && '👑'}
+                      </span>
+                      <span style={{ fontSize: '1.3rem', fontWeight: 'bold', color: ovrColor }}>{ovr.toFixed(1)}</span>
+                    </div>
+                    <StatBar label="STR Technik" value={str} color={GELB} />
+                    <StatBar label="ERF Erfolg" value={erf} color={GRUEN} />
+                    <StatBar label="EFF Effizienz" value={eff} color={BLAU} />
+                    {!hasData && <div style={{ fontSize: '0.6rem', color: '#6b7280', marginTop: '0.35rem' }}>* &lt;3 Spiele — nur STR</div>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
         </div>
       </div>
     );
@@ -1240,17 +1293,21 @@ export default function FussballManagerPWA() {
     const calcTeamStrength = (playerNames) => {
       if (playerNames.length === 0) return null;
       const totals = { sturm: 0, mittelfeld: 0, abwehr: 0 };
+      let ovrTotal = 0;
       playerNames.forEach((name) => {
         const pos = getPlayerPositions(name);
         totals.sturm += pos.sturm;
         totals.mittelfeld += pos.mittelfeld;
         totals.abwehr += pos.abwehr;
+        ovrTotal += getOVR(name);
       });
       const n = playerNames.length;
-      const sturm = totals.sturm / n;
-      const mittelfeld = totals.mittelfeld / n;
-      const abwehr = totals.abwehr / n;
-      return { sturm, mittelfeld, abwehr, gesamt: (sturm + mittelfeld + abwehr) / 3 };
+      return {
+        sturm: totals.sturm / n,
+        mittelfeld: totals.mittelfeld / n,
+        abwehr: totals.abwehr / n,
+        gesamt: ovrTotal / n,
+      };
     };
     const stärkeGelb = calcTeamStrength(formData.players1);
     const stärkeBlau = calcTeamStrength(formData.players2);

@@ -37,7 +37,7 @@ Jede View ist ein eigener `if (view === '...') return (...)` Block am Ende der K
 | `ergebnisse` | Vollständige Spielliste mit Aufstellung, Torschützen, Tauschspieler-Markierung |
 | `stats` | Spieler-Tabelle (Punkte, S/U/N, T/G, Tordifferenz, Anwesenheit, Streaks) |
 | `scorers` | Torschützen-Rangliste |
-| `statspro` | Mannschafts-Bilanz Kopf-an-Kopf + Position-Analyse |
+| `statspro` | Mannschafts-Bilanz Kopf-an-Kopf + Spielerbewertungs-Karten (OVR) |
 | `players` | Spieler verwalten (hinzufügen, umbenennen, löschen, Positionen setzen) |
 | `newgame` | Spiel erfassen / bearbeiten (Edit: alle Felder vorbelegt, vollständiger Überschreib-Save) |
 | `csv` | CSV Import/Export UI |
@@ -77,6 +77,7 @@ Alle Stats werden ausschließlich client-seitig via `useMemo` berechnet — kein
 - **`teamBilanz`** — aggregiert Kopf-an-Kopf-Ergebnisse aus `games`.
 - **`extendedStats`** — berechnet Anwesenheit, aktuelle Streak und Max-Streak pro Spieler aus `gamePlayers`.
 - `getGoalsPerGame` dividiert Tore durch `games_played - swaps` (Swap-Spiele ausgenommen).
+- `getOVR` berechnet Gesamt-Rating: STR (Positions-Ø) 60% + ERF (Win Rate ×10) 25% + EFF (Tore/Spiel ×5) 15%. Fallback auf reinen STR wenn `normalGames < 3`. Wird für Team-Generierung und Balance-Anzeige verwendet.
 
 ### Performance-Muster
 
