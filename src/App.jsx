@@ -47,6 +47,8 @@ export default function FussballManagerPWA() {
   const [showShareCard, setShowShareCard] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const [showStatsLegend, setShowStatsLegend] = useState(false);
+  const [presentPlayers, setPresentPlayers] = useState([]);
+  const [spieltagTeams, setSpieltagTeams] = useState(null);
 
   // ─── INITIAL LOAD ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -233,6 +235,19 @@ export default function FussballManagerPWA() {
       console.error('Fehler:', err);
       alert('Fehler beim Speichern');
     }
+  };
+
+  const generateSpieltagTeams = () => {
+    if (presentPlayers.length < 2) { alert('Mindestens 2 Spieler auswählen!'); return; }
+    const playerScores = presentPlayers.map((name) => {
+      const pos = getPlayerPositions(name);
+      return { name, score: (pos.sturm + pos.mittelfeld + pos.abwehr) / 3 };
+    });
+    playerScores.sort((a, b) => b.score - a.score);
+    const team1 = [], team2 = [];
+    playerScores.forEach((p, idx) => (idx % 2 === 0 ? team1 : team2).push(p));
+    const avg = (arr) => arr.reduce((s, p) => s + p.score, 0) / arr.length;
+    setSpieltagTeams({ team1: { players: team1, avg: avg(team1) }, team2: { players: team2, avg: avg(team2) } });
   };
 
   const generateBalancedTeams = () => {
@@ -597,6 +612,72 @@ export default function FussballManagerPWA() {
               </div>
             </div>
           )}
+
+          {/* ─── SPIELTAG (öffentlich) ────────────────────────────────────── */}
+          <div style={styles.section}>
+            <h2 style={styles.sectionTitle}>🗓️ Spieltag — Wer ist da?</h2>
+            <div style={{ ...styles.card, padding: '0.75rem', marginBottom: '0.75rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.25rem' }}>
+                {players.map((p) => {
+                  const isPresent = presentPlayers.includes(p.name);
+                  return (
+                    <div
+                      key={p.id}
+                      onClick={() => {
+                        setPresentPlayers((prev) => isPresent ? prev.filter((n) => n !== p.name) : [...prev, p.name]);
+                        setSpieltagTeams(null);
+                      }}
+                      style={{ display: 'flex', alignItems: 'center', padding: '0.4rem 0.5rem', borderRadius: '0.4rem', cursor: 'pointer', background: isPresent ? 'rgba(16,185,129,0.15)' : 'transparent', border: `1px solid ${isPresent ? GRUEN : 'transparent'}` }}
+                    >
+                      <span style={{ fontSize: '0.9rem', marginRight: '0.4rem' }}>{isPresent ? '✅' : '⬜'}</span>
+                      <span style={{ fontSize: '0.85rem', color: isPresent ? 'white' : '#9ca3af' }}>{p.name}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
+              <button
+                onClick={generateSpieltagTeams}
+                disabled={presentPlayers.length < 2}
+                style={{ ...styles.button, ...styles.buttonPrimary, marginBottom: 0, flex: 1, opacity: presentPlayers.length < 2 ? 0.4 : 1 }}
+              >
+                🚀 Teams erstellen ({presentPlayers.length} Spieler)
+              </button>
+              {presentPlayers.length > 0 && (
+                <button onClick={() => { setPresentPlayers([]); setSpieltagTeams(null); }} style={{ ...styles.button, ...styles.buttonSecondary, marginBottom: 0, width: 'auto', padding: '0.75rem' }}>✖</button>
+              )}
+            </div>
+
+            {spieltagTeams && (() => {
+              const avg1 = spieltagTeams.team1.avg;
+              const avg2 = spieltagTeams.team2.avg;
+              const bal = Math.round((Math.min(avg1, avg2) / Math.max(avg1, avg2)) * 100);
+              const balColor = bal >= 90 ? GRUEN : bal >= 75 ? GELB : '#ef4444';
+              return (
+                <div style={styles.card}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                    <div>
+                      <div style={{ color: GELB, fontWeight: '600', marginBottom: '0.5rem', fontSize: '0.9rem' }}>🟡 GELB</div>
+                      {spieltagTeams.team1.players.map((p) => <div key={p.name} style={{ fontSize: '0.85rem', padding: '0.2rem 0', color: 'white' }}>{p.name}</div>)}
+                      <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '0.5rem' }}>Ø {avg1.toFixed(1)}</div>
+                    </div>
+                    <div>
+                      <div style={{ color: BLAU, fontWeight: '600', marginBottom: '0.5rem', fontSize: '0.9rem' }}>🔵 BLAU</div>
+                      {spieltagTeams.team2.players.map((p) => <div key={p.name} style={{ fontSize: '0.85rem', padding: '0.2rem 0', color: 'white' }}>{p.name}</div>)}
+                      <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '0.5rem' }}>Ø {avg2.toFixed(1)}</div>
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'center', marginBottom: '0.4rem' }}>
+                    <span style={{ fontWeight: 'bold', color: balColor }}>⚖️ {bal}% ausgeglichen</span>
+                  </div>
+                  <div style={{ background: 'rgba(255,255,255,0.1)', borderRadius: '999px', height: '8px', overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${bal}%`, background: balColor, borderRadius: '999px' }} />
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
 
           <div style={styles.section}>
             <h2 style={styles.sectionTitle}>📊 Quick Stats</h2>
