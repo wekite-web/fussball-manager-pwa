@@ -529,20 +529,18 @@ export default function FussballManagerPWA() {
   };
 
   // ─── KOMPONENTEN ───────────────────────────────────────────────────────────
-  const AdminLoginModal = () => (
-    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
-      <div style={{ ...styles.card, maxWidth: '300px' }}>
-        <h3 style={{ textAlign: 'center', marginTop: 0 }}>🔐 Admin-Login</h3>
-        <input type="password" placeholder="Passwort" value={adminPassword} onChange={(e) => setAdminPassword(e.target.value)} style={styles.input} onKeyPress={(e) => { if (e.key === 'Enter') handleAdminLogin(adminPassword); }} />
-        <button onClick={() => handleAdminLogin(adminPassword)} style={{ ...styles.button, ...styles.buttonPrimary, marginBottom: '0.5rem' }}>✅ Anmelden</button>
-        <button onClick={() => setShowAdminLogin(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>Abbrechen</button>
-      </div>
-    </div>
-  );
-
   const TopNav = () => (
     <>
-    {showAdminLogin && <AdminLoginModal />}
+    {showAdminLogin && (
+      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
+        <div style={{ ...styles.card, maxWidth: '300px' }}>
+          <h3 style={{ textAlign: 'center', marginTop: 0 }}>🔐 Admin-Login</h3>
+          <input type="password" placeholder="Passwort" value={adminPassword} onChange={(e) => setAdminPassword(e.target.value)} style={styles.input} onKeyPress={(e) => { if (e.key === 'Enter') handleAdminLogin(adminPassword); }} autoFocus />
+          <button onClick={() => handleAdminLogin(adminPassword)} style={{ ...styles.button, ...styles.buttonPrimary, marginBottom: '0.5rem' }}>✅ Anmelden</button>
+          <button onClick={() => setShowAdminLogin(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>Abbrechen</button>
+        </div>
+      </div>
+    )}
     <div style={styles.topNav}>
       <div style={styles.header}>
         {view !== 'home' ? (
