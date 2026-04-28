@@ -498,6 +498,8 @@ export default function FussballManagerPWA() {
   );
 
   const TopNav = () => (
+    <>
+    {showAdminLogin && <AdminLoginModal />}
     <div style={styles.topNav}>
       <div style={styles.header}>
         {view !== 'home' ? (
@@ -523,14 +525,14 @@ export default function FussballManagerPWA() {
         ))}
       </div>
     </div>
+    </>
   );
 
   // ─── VIEWS ─────────────────────────────────────────────────────────────────
   if (view === 'home') {
     return (
       <div style={styles.container}>
-        {showAdminLogin && <AdminLoginModal />}
-        <TopNav />
+          <TopNav />
         <div style={styles.content}>
           {isAdminMode && (
             <div style={styles.section}>
