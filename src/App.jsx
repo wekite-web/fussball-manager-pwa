@@ -653,7 +653,6 @@ export default function FussballManagerPWA() {
               <button style={{ ...styles.button, ...styles.buttonPrimary }} onClick={() => setView('newgame')}>➕ Neues Spiel</button>
               <button style={{ ...styles.button, ...styles.buttonSecondary }} onClick={() => setView('players')}>👥 Spieler verwalten</button>
               <button style={{ ...styles.button, ...styles.buttonSecondary }} onClick={() => setView('csv')}>📁 CSV Import/Export</button>
-              <button style={{ ...styles.button, ...styles.buttonSecondary }} onClick={generateBalancedTeams}>🎯 Teams generieren</button>
               <button style={{ ...styles.button, ...styles.buttonSecondary }} onClick={() => setShowShareCard((v) => !v)}>🔗 App teilen</button>
             </div>
           )}
@@ -682,22 +681,6 @@ export default function FussballManagerPWA() {
             );
           })()}
 
-          {generatedTeams && (
-            <div style={styles.section}>
-              <h2 style={styles.sectionTitle}>🎯 Generierte Teams</h2>
-              <div style={styles.card}>
-                <div style={{ marginBottom: '1rem' }}>
-                  <div style={{ color: GELB, fontWeight: '600', marginBottom: '0.5rem' }}>Team 1 (Ø {generatedTeams.team1.avg})</div>
-                  {generatedTeams.team1.players.map((p) => <div key={p.name} style={{ fontSize: '0.85rem', padding: '0.25rem' }}>{p.name}</div>)}
-                </div>
-                <div style={{ borderTop: `1px solid rgba(16,185,129,0.2)`, paddingTop: '1rem', marginBottom: '1rem' }}>
-                  <div style={{ color: BLAU, fontWeight: '600', marginBottom: '0.5rem' }}>Team 2 (Ø {generatedTeams.team2.avg})</div>
-                  {generatedTeams.team2.players.map((p) => <div key={p.name} style={{ fontSize: '0.85rem', padding: '0.25rem' }}>{p.name}</div>)}
-                </div>
-                <div style={{ textAlign: 'center', color: GRUEN, fontSize: '0.85rem', fontWeight: '600' }}>Differenz: {generatedTeams.difference}</div>
-              </div>
-            </div>
-          )}
 
           {/* ── Saison-Überblick ───────────────────────────────────────── */}
           <div style={styles.section}>
