@@ -584,6 +584,20 @@ export default function FussballManagerPWA() {
           return a > b ? stat : best;
         }, playerStats[0])
       : null;
+    const effLeader = topScorers.length > 0
+      ? topScorers.reduce((best, scorer) => {
+          const statA = playerStats.find((s) => s.player_name === scorer.player_name);
+          const statB = playerStats.find((s) => s.player_name === best.player_name);
+          const normA = statA ? statA.games_played - statA.swaps : 0;
+          const normB = statB ? statB.games_played - statB.swaps : 0;
+          const ratioA = normA > 0 ? scorer.total_goals / normA : 0;
+          const ratioB = normB > 0 ? best.total_goals / normB : 0;
+          return ratioA > ratioB ? scorer : best;
+        }, topScorers[0])
+      : null;
+    const effLeaderStat = effLeader ? playerStats.find((s) => s.player_name === effLeader.player_name) : null;
+    const effLeaderNorm = effLeaderStat ? effLeaderStat.games_played - effLeaderStat.swaps : 0;
+    const effLeaderRatio = effLeader && effLeaderNorm > 0 ? (effLeader.total_goals / effLeaderNorm).toFixed(2) : null;
 
     return (
       <div style={styles.container}>
@@ -678,6 +692,13 @@ export default function FussballManagerPWA() {
                   <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginBottom: '0.25rem' }}>📅 Anwesenheit</div>
                   <div style={{ fontSize: '1rem', fontWeight: '600', color: 'white', marginBottom: '0.25rem' }}>{attLeader.player_name.substring(0, 10)}</div>
                   <div style={{ fontSize: '1.25rem', fontWeight: 'bold', color: GRUEN }}>{(extendedStats[attLeader.player_name] || {}).attendance}%</div>
+                </div>
+              )}
+              {effLeader && effLeaderRatio && (
+                <div style={{ ...styles.card, marginBottom: 0, padding: '1rem', textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginBottom: '0.25rem' }}>⚡ Effizienz</div>
+                  <div style={{ fontSize: '1rem', fontWeight: '600', color: 'white', marginBottom: '0.25rem' }}>{effLeader.player_name.substring(0, 10)}</div>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 'bold', color: GRUEN }}>{effLeaderRatio} ⚽/Spiel</div>
                 </div>
               )}
             </div>
