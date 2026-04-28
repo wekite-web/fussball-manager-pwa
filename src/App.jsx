@@ -1152,7 +1152,38 @@ export default function FussballManagerPWA() {
           </div>
 
           <div style={styles.section}>
-            <h2 style={styles.sectionTitle}>🎮 Spielerbewertung</h2>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', paddingBottom: '0.75rem', borderBottom: `2px solid ${GRUEN}` }}>
+              <h2 style={{ ...styles.sectionTitle, marginBottom: 0, paddingBottom: 0, borderBottom: 'none' }}>🎮 Spielerbewertung</h2>
+              <button
+                onClick={() => setShowStatsLegend((v) => !v)}
+                style={{ background: 'none', border: `1px solid ${showStatsLegend ? GRUEN : 'rgba(255,255,255,0.2)'}`, borderRadius: '0.5rem', color: showStatsLegend ? GRUEN : '#9ca3af', padding: '0.3rem 0.75rem', fontSize: '0.85rem', cursor: 'pointer' }}
+              >
+                ℹ️ Legende
+              </button>
+            </div>
+            {showStatsLegend && (
+              <div style={{ ...styles.card, marginBottom: '1rem', padding: '1rem', fontSize: '0.8rem', lineHeight: '1.8' }}>
+                <div style={{ fontWeight: '600', color: GRUEN, marginBottom: '0.5rem' }}>🎮 OVR — Gesamt-Rating (0–10)</div>
+                <div style={{ color: '#9ca3af', marginBottom: '0.75rem' }}>Gewichteter Schnitt aus den 3 Werten unten. Bei weniger als 3 normalen Spielen zählt nur STR.</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span style={{ color: GELB, fontWeight: '600', minWidth: '30px' }}>STR</span>
+                    <span style={{ color: '#9ca3af' }}>Technik — Ø aus Sturm / Mittelfeld / Abwehr (60%)</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span style={{ color: GRUEN, fontWeight: '600', minWidth: '30px' }}>ERF</span>
+                    <span style={{ color: '#9ca3af' }}>Erfolg — Siegquote (Siege ÷ normale Spiele × 10) (25%)</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span style={{ color: BLAU, fontWeight: '600', minWidth: '30px' }}>EFF</span>
+                    <span style={{ color: '#9ca3af' }}>Effizienz — Tore pro Spiel (×5, max 10) (15%)</span>
+                  </div>
+                </div>
+                <div style={{ marginTop: '0.75rem', borderTop: '1px solid rgba(16,185,129,0.15)', paddingTop: '0.75rem', color: '#9ca3af' }}>
+                  OVR-Farbe: <span style={{ color: GRUEN }}>● ≥8.0</span> stark · <span style={{ color: GELB }}>● ≥6.0</span> mittel · <span style={{ color: '#ef4444' }}>● &lt;6.0</span> schwach
+                </div>
+              </div>
+            )}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
               {playerStats.map((stat) => {
                 const pos = getPlayerPositions(stat.player_name);
