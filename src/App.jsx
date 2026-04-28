@@ -971,6 +971,28 @@ export default function FussballManagerPWA() {
       ...formData.players2.map((p) => ({ name: p, team: 'Blau' })),
     ];
 
+    const calcTeamStrength = (playerNames) => {
+      if (playerNames.length === 0) return null;
+      const totals = { sturm: 0, mittelfeld: 0, abwehr: 0 };
+      playerNames.forEach((name) => {
+        const pos = getPlayerPositions(name);
+        totals.sturm += pos.sturm;
+        totals.mittelfeld += pos.mittelfeld;
+        totals.abwehr += pos.abwehr;
+      });
+      const n = playerNames.length;
+      const sturm = totals.sturm / n;
+      const mittelfeld = totals.mittelfeld / n;
+      const abwehr = totals.abwehr / n;
+      return { sturm, mittelfeld, abwehr, gesamt: (sturm + mittelfeld + abwehr) / 3 };
+    };
+    const stärkeGelb = calcTeamStrength(formData.players1);
+    const stärkeBlau = calcTeamStrength(formData.players2);
+    const balancePct = stärkeGelb && stärkeBlau
+      ? Math.round((Math.min(stärkeGelb.gesamt, stärkeBlau.gesamt) / Math.max(stärkeGelb.gesamt, stärkeBlau.gesamt)) * 100)
+      : null;
+    const balanceColor = balancePct >= 90 ? GRUEN : balancePct >= 75 ? GELB : '#ef4444';
+
     return (
       <div style={styles.container}>
         <TopNav />
@@ -1014,6 +1036,43 @@ export default function FussballManagerPWA() {
                 ))}
               </div>
             </div>
+
+            {/* ─── TEAM BALANCE ──────────────────────────────────────────── */}
+            {stärkeGelb && stärkeBlau && (
+              <div style={styles.section}>
+                <h2 style={styles.sectionTitle}>⚖️ Team Balance</h2>
+                <div style={{ ...styles.card, padding: '1rem' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px 1fr', gap: '0.5rem', textAlign: 'center', marginBottom: '0.75rem' }}>
+                    <div style={{ color: GELB, fontWeight: '600', fontSize: '0.9rem' }}>GELB ({formData.players1.length})</div>
+                    <div />
+                    <div style={{ color: BLAU, fontWeight: '600', fontSize: '0.9rem' }}>BLAU ({formData.players2.length})</div>
+                  </div>
+                  {[
+                    { label: '⚡ Sturm', g: stärkeGelb.sturm, b: stärkeBlau.sturm },
+                    { label: '🔄 Mittelfeld', g: stärkeGelb.mittelfeld, b: stärkeBlau.mittelfeld },
+                    { label: '🛡️ Abwehr', g: stärkeGelb.abwehr, b: stärkeBlau.abwehr },
+                  ].map(({ label, g, b }) => (
+                    <div key={label} style={{ display: 'grid', gridTemplateColumns: '1fr 90px 1fr', gap: '0.5rem', alignItems: 'center', marginBottom: '0.4rem' }}>
+                      <div style={{ textAlign: 'right', fontWeight: '600', color: GELB }}>{g.toFixed(1)}</div>
+                      <div style={{ fontSize: '0.72rem', color: '#9ca3af', textAlign: 'center' }}>{label}</div>
+                      <div style={{ textAlign: 'left', fontWeight: '600', color: BLAU }}>{b.toFixed(1)}</div>
+                    </div>
+                  ))}
+                  <div style={{ borderTop: '1px solid rgba(16,185,129,0.2)', margin: '0.75rem 0' }} />
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px 1fr', gap: '0.5rem', alignItems: 'center', marginBottom: '0.75rem' }}>
+                    <div style={{ textAlign: 'right', fontSize: '1.25rem', fontWeight: 'bold', color: GELB }}>{stärkeGelb.gesamt.toFixed(1)}</div>
+                    <div style={{ fontSize: '0.72rem', color: '#9ca3af', textAlign: 'center' }}>Gesamt</div>
+                    <div style={{ textAlign: 'left', fontSize: '1.25rem', fontWeight: 'bold', color: BLAU }}>{stärkeBlau.gesamt.toFixed(1)}</div>
+                  </div>
+                  <div style={{ textAlign: 'center', marginBottom: '0.5rem' }}>
+                    <span style={{ fontSize: '1.1rem', fontWeight: 'bold', color: balanceColor }}>{balancePct}% ausgeglichen</span>
+                  </div>
+                  <div style={{ background: 'rgba(255,255,255,0.1)', borderRadius: '999px', height: '8px', overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${balancePct}%`, background: balanceColor, borderRadius: '999px' }} />
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* ─── SPIELERTAUSCH ─────────────────────────────────────────── */}
             <div style={styles.section}>
