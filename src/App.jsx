@@ -558,6 +558,7 @@ export default function FussballManagerPWA() {
       <div style={styles.navBar}>
         {[
           { key: 'home', label: '🏠 Home' },
+          { key: 'spieltag', label: '🗓️ Spieltag' },
           { key: 'stats', label: '📊 Tabelle' },
           { key: 'scorers', label: '⚽ Tore' },
           { key: 'statspro', label: '⭐ Pro' },
@@ -638,72 +639,6 @@ export default function FussballManagerPWA() {
             </div>
           )}
 
-          {/* ─── SPIELTAG (öffentlich) ────────────────────────────────────── */}
-          <div style={styles.section}>
-            <h2 style={styles.sectionTitle}>🗓️ Spieltag — Wer ist da?</h2>
-            <div style={{ ...styles.card, padding: '0.75rem', marginBottom: '0.75rem' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.25rem' }}>
-                {players.map((p) => {
-                  const isPresent = presentPlayers.includes(p.name);
-                  return (
-                    <div
-                      key={p.id}
-                      onClick={() => {
-                        setPresentPlayers((prev) => isPresent ? prev.filter((n) => n !== p.name) : [...prev, p.name]);
-                        setSpieltagTeams(null);
-                      }}
-                      style={{ display: 'flex', alignItems: 'center', padding: '0.4rem 0.5rem', borderRadius: '0.4rem', cursor: 'pointer', background: isPresent ? 'rgba(16,185,129,0.15)' : 'transparent', border: `1px solid ${isPresent ? GRUEN : 'transparent'}` }}
-                    >
-                      <span style={{ fontSize: '0.9rem', marginRight: '0.4rem' }}>{isPresent ? '✅' : '⬜'}</span>
-                      <span style={{ fontSize: '0.85rem', color: isPresent ? 'white' : '#9ca3af' }}>{p.name}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
-              <button
-                onClick={generateSpieltagTeams}
-                disabled={presentPlayers.length < 2}
-                style={{ ...styles.button, ...styles.buttonPrimary, marginBottom: 0, flex: 1, opacity: presentPlayers.length < 2 ? 0.4 : 1 }}
-              >
-                🚀 Teams erstellen ({presentPlayers.length} Spieler)
-              </button>
-              {presentPlayers.length > 0 && (
-                <button onClick={() => { setPresentPlayers([]); setSpieltagTeams(null); }} style={{ ...styles.button, ...styles.buttonSecondary, marginBottom: 0, width: 'auto', padding: '0.75rem' }}>✖</button>
-              )}
-            </div>
-
-            {spieltagTeams && (() => {
-              const avg1 = spieltagTeams.team1.avg;
-              const avg2 = spieltagTeams.team2.avg;
-              const bal = Math.round((Math.min(avg1, avg2) / Math.max(avg1, avg2)) * 100);
-              const balColor = bal >= 90 ? GRUEN : bal >= 75 ? GELB : '#ef4444';
-              return (
-                <div style={styles.card}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                    <div>
-                      <div style={{ color: GELB, fontWeight: '600', marginBottom: '0.5rem', fontSize: '0.9rem' }}>🟡 GELB</div>
-                      {spieltagTeams.team1.players.map((p) => <div key={p.name} style={{ fontSize: '0.85rem', padding: '0.2rem 0', color: 'white' }}>{p.name}</div>)}
-                      <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '0.5rem' }}>Ø {avg1.toFixed(1)}</div>
-                    </div>
-                    <div>
-                      <div style={{ color: BLAU, fontWeight: '600', marginBottom: '0.5rem', fontSize: '0.9rem' }}>🔵 BLAU</div>
-                      {spieltagTeams.team2.players.map((p) => <div key={p.name} style={{ fontSize: '0.85rem', padding: '0.2rem 0', color: 'white' }}>{p.name}</div>)}
-                      <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '0.5rem' }}>Ø {avg2.toFixed(1)}</div>
-                    </div>
-                  </div>
-                  <div style={{ textAlign: 'center', marginBottom: '0.4rem' }}>
-                    <span style={{ fontWeight: 'bold', color: balColor }}>⚖️ {bal}% ausgeglichen</span>
-                  </div>
-                  <div style={{ background: 'rgba(255,255,255,0.1)', borderRadius: '999px', height: '8px', overflow: 'hidden' }}>
-                    <div style={{ height: '100%', width: `${bal}%`, background: balColor, borderRadius: '999px' }} />
-                  </div>
-                </div>
-              );
-            })()}
-          </div>
-
           <div style={styles.section}>
             <h2 style={styles.sectionTitle}>📊 Quick Stats</h2>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
@@ -768,6 +703,82 @@ export default function FussballManagerPWA() {
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (view === 'spieltag') {
+    const avg1 = spieltagTeams ? spieltagTeams.team1.avg : 0;
+    const avg2 = spieltagTeams ? spieltagTeams.team2.avg : 0;
+    const bal = spieltagTeams ? Math.round((Math.min(avg1, avg2) / Math.max(avg1, avg2)) * 100) : 0;
+    const balColor = bal >= 90 ? GRUEN : bal >= 75 ? GELB : '#ef4444';
+
+    return (
+      <div style={styles.container}>
+        <TopNav />
+        <div style={styles.content}>
+          <div style={styles.section}>
+            <h2 style={styles.sectionTitle}>🗓️ Wer ist heute dabei?</h2>
+            <div style={{ ...styles.card, padding: '0.75rem', marginBottom: '0.75rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.25rem' }}>
+                {players.map((p) => {
+                  const isPresent = presentPlayers.includes(p.name);
+                  return (
+                    <div
+                      key={p.id}
+                      onClick={() => { setPresentPlayers((prev) => isPresent ? prev.filter((n) => n !== p.name) : [...prev, p.name]); setSpieltagTeams(null); }}
+                      style={{ display: 'flex', alignItems: 'center', padding: '0.5rem', borderRadius: '0.4rem', cursor: 'pointer', background: isPresent ? 'rgba(16,185,129,0.15)' : 'transparent', border: `1px solid ${isPresent ? GRUEN : 'transparent'}` }}
+                    >
+                      <span style={{ fontSize: '1rem', marginRight: '0.5rem' }}>{isPresent ? '✅' : '⬜'}</span>
+                      <span style={{ fontSize: '0.9rem', color: isPresent ? 'white' : '#9ca3af', fontWeight: isPresent ? '600' : 'normal' }}>{p.name}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.5rem' }}>
+              <button
+                onClick={generateSpieltagTeams}
+                disabled={presentPlayers.length < 2}
+                style={{ ...styles.button, ...styles.buttonPrimary, marginBottom: 0, flex: 1, opacity: presentPlayers.length < 2 ? 0.4 : 1 }}
+              >
+                🚀 Teams erstellen ({presentPlayers.length} Spieler)
+              </button>
+              {presentPlayers.length > 0 && (
+                <button onClick={() => { setPresentPlayers([]); setSpieltagTeams(null); }} style={{ ...styles.button, ...styles.buttonSecondary, marginBottom: 0, width: 'auto', padding: '0.75rem' }}>✖</button>
+              )}
+            </div>
+          </div>
+
+          {spieltagTeams && (
+            <div style={styles.section}>
+              <h2 style={styles.sectionTitle}>⚖️ Team Balance</h2>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                <div style={{ ...styles.card, padding: '1rem' }}>
+                  <div style={{ color: GELB, fontWeight: '700', marginBottom: '0.75rem', fontSize: '1rem' }}>🟡 GELB</div>
+                  {spieltagTeams.team1.players.map((p) => (
+                    <div key={p.name} style={{ fontSize: '0.9rem', padding: '0.3rem 0', color: 'white', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>{p.name}</div>
+                  ))}
+                  <div style={{ fontSize: '0.8rem', color: '#9ca3af', marginTop: '0.75rem' }}>Ø Stärke: <span style={{ color: GELB, fontWeight: '600' }}>{avg1.toFixed(1)}</span></div>
+                </div>
+                <div style={{ ...styles.card, padding: '1rem' }}>
+                  <div style={{ color: BLAU, fontWeight: '700', marginBottom: '0.75rem', fontSize: '1rem' }}>🔵 BLAU</div>
+                  {spieltagTeams.team2.players.map((p) => (
+                    <div key={p.name} style={{ fontSize: '0.9rem', padding: '0.3rem 0', color: 'white', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>{p.name}</div>
+                  ))}
+                  <div style={{ fontSize: '0.8rem', color: '#9ca3af', marginTop: '0.75rem' }}>Ø Stärke: <span style={{ color: BLAU, fontWeight: '600' }}>{avg2.toFixed(1)}</span></div>
+                </div>
+              </div>
+              <div style={{ ...styles.card, padding: '1rem', textAlign: 'center' }}>
+                <div style={{ fontSize: '1.3rem', fontWeight: 'bold', color: balColor, marginBottom: '0.5rem' }}>⚖️ {bal}% ausgeglichen</div>
+                <div style={{ background: 'rgba(255,255,255,0.1)', borderRadius: '999px', height: '10px', overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${bal}%`, background: balColor, borderRadius: '999px' }} />
+                </div>
+              </div>
             </div>
           )}
         </div>
