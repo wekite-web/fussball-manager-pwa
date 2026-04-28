@@ -705,29 +705,24 @@ export default function FussballManagerPWA() {
             </div>
           </div>
 
-          {games.length > 0 && (
-            <div style={styles.section}>
-              <h2 style={styles.sectionTitle}>📅 Letzte Spiele</h2>
-              {games.slice(0, 3).map((game) => (
-                <div key={game.id} style={{ ...styles.card, padding: '1rem', marginBottom: '0.75rem' }}>
+          {games.length > 0 && (() => {
+            const last = games[0];
+            return (
+              <div style={styles.section}>
+                <h2 style={styles.sectionTitle}>📅 Letztes Spiel</h2>
+                <div style={{ ...styles.card, padding: '1rem' }}>
                   <div style={{ fontSize: '0.8rem', color: '#6b7280', marginBottom: '0.5rem' }}>
-                    {new Date(game.date).toLocaleDateString('de-DE')}
-                    {isAdminMode && (
-                      <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem' }}>
-                        <button onClick={() => startEditGame(game)} style={{ ...styles.button, ...styles.buttonSecondary, padding: '0.25rem 0.75rem', fontSize: '0.8rem', marginBottom: 0, width: 'auto' }}>✏️ Edit</button>
-                        <button onClick={() => deleteGame(game.id, game.game_id)} style={{ ...styles.button, ...styles.buttonDanger, padding: '0.25rem 0.75rem', fontSize: '0.8rem', marginBottom: 0, width: 'auto' }}>🗑️</button>
-                      </div>
-                    )}
+                    {new Date(last.date).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' })}
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ color: GELB, fontSize: '0.9rem' }}>{game.team1}</span>
-                    <span style={{ fontSize: '1.5rem', fontWeight: 'bold', color: GRUEN }}>{game.score1}:{game.score2}</span>
-                    <span style={{ color: BLAU, fontSize: '0.9rem' }}>{game.team2}</span>
+                    <span style={{ color: GELB, fontSize: '0.9rem', fontWeight: last.score1 > last.score2 ? '700' : '400' }}>🟡 GELB</span>
+                    <span style={{ fontSize: '1.75rem', fontWeight: 'bold', color: GRUEN }}>{last.score1} : {last.score2}</span>
+                    <span style={{ color: BLAU, fontSize: '0.9rem', fontWeight: last.score2 > last.score1 ? '700' : '400' }}>BLAU 🔵</span>
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
+              </div>
+            );
+          })()}
         </div>
       </div>
     );
