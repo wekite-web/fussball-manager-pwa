@@ -654,14 +654,17 @@ export default function FussballManagerPWA() {
                     </tr>
                   </thead>
                   <tbody>
-                    {playerStats.map((stat, idx) => (
-                      <tr key={idx} style={{ borderBottom: '1px solid rgba(16,185,129,0.1)' }}>
-                        <td style={{ textAlign: 'left', padding: '0.4rem' }}>{stat.player_name.substring(0, 10)}</td>
-                        <td style={{ textAlign: 'center', padding: '0.4rem', color: GRUEN, fontWeight: '600' }}>{stat.goals_for}</td>
-                        <td style={{ textAlign: 'center', padding: '0.4rem' }}>{getGoalsPerGame(stat.player_name)}</td>
-                        <td style={{ textAlign: 'center', padding: '0.4rem' }}>{stat.goals_for}:{stat.goals_against}</td>
-                      </tr>
-                    ))}
+                    {playerStats.map((stat, idx) => {
+                      const hasNormalGames = stat.games_played - stat.swaps > 0;
+                      return (
+                        <tr key={idx} style={{ borderBottom: '1px solid rgba(16,185,129,0.1)' }}>
+                          <td style={{ textAlign: 'left', padding: '0.4rem' }}>{stat.player_name.substring(0, 10)}</td>
+                          <td style={{ textAlign: 'center', padding: '0.4rem', color: GRUEN, fontWeight: '600' }}>{hasNormalGames ? stat.goals_for : '—'}</td>
+                          <td style={{ textAlign: 'center', padding: '0.4rem' }}>{hasNormalGames ? getGoalsPerGame(stat.player_name) : '—'}</td>
+                          <td style={{ textAlign: 'center', padding: '0.4rem' }}>{hasNormalGames ? `${stat.goals_for}:${stat.goals_against}` : '—'}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

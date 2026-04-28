@@ -14,7 +14,9 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // ─── KONSTANTEN ────────────────────────────────────────────────────────────────
 
+// Pflicht-Spalten — tausch_spieler ist optional (Rückwärtskompatibilität)
 const CSV_HEADERS = ['datum', 'gelb_spieler', 'gelb_tore', 'blau_spieler', 'blau_tore', 'torschuetzen'];
+const CSV_EXPORT_HEADERS = [...CSV_HEADERS, 'tausch_spieler'];
 const PLAYER_SEP = '|';
 
 // ─── PARSE ─────────────────────────────────────────────────────────────────────
@@ -22,6 +24,7 @@ const PLAYER_SEP = '|';
 /**
  * Liest CSV-Text und gibt ein Array von Roh-Objekten zurück.
  * Unterstützt sowohl , als auch ; als Trennzeichen (Excel-DE).
+ * tausch_spieler ist optional — alte CSVs ohne diese Spalte funktionieren weiterhin.
  *
  * @param {string} text - Roher CSV-Inhalt
  * @returns {{ rows: object[], errors: string[] }}
@@ -34,23 +37,19 @@ export function parseCSV(text) {
     return { rows: [], errors: ['CSV ist leer oder hat keine Datenzeilen.'] };
   }
 
-  // Trennzeichen automatisch erkennen (, oder ;)
   const sep = lines[0].includes(';') ? ';' : ',';
 
   const headers = lines[0].split(sep).map((h) => h.trim().toLowerCase());
   const missingHeaders = CSV_HEADERS.filter((h) => !headers.includes(h));
   if (missingHeaders.length > 0) {
-    return {
-      rows: [],
-      errors: [`Fehlende Spalten: ${missingHeaders.join(', ')}`],
-    };
+    return { rows: [], errors: [`Fehlende Spalten: ${missingHeaders.join(', ')}`] };
   }
 
   const rows = [];
 
   lines.slice(1).forEach((line, idx) => {
     const lineNum = idx + 2;
-    if (!line.trim()) return; // Leerzeilen überspringen
+    if (!line.trim()) return;
 
     const values = line.split(sep).map((v) => v.trim());
     if (values.length < CSV_HEADERS.length) {
@@ -71,6 +70,7 @@ export function parseCSV(text) {
 
 /**
  * Validiert alle geparsten Zeilen gegen bekannte Spieler und bestehende Spiele.
+ * tausch_spieler wird als optionales Feld behandelt.
  *
  * @param {object[]} rows - Output von parseCSV()
  * @param {string[]} knownPlayers - Alle Spielernamen aus der DB
@@ -104,7 +104,6 @@ export function validateCSV(rows, knownPlayers, existingDates = []) {
     if (gelbSpieler.length === 0) lineErrors.push('Keine Gelb-Spieler angegeben');
     if (blauSpieler.length === 0) lineErrors.push('Keine Blau-Spieler angegeben');
 
-    // Unbekannte Spieler prüfen
     const allPlayers = [...gelbSpieler, ...blauSpieler];
     const unknown = allPlayers.filter((p) => !knownSet.has(p.toLowerCase()));
     if (unknown.length > 0) {
@@ -121,18 +120,27 @@ export function validateCSV(rows, knownPlayers, existingDates = []) {
     const torschuetzen = row.torschuetzen
       ? row.torschuetzen.split(PLAYER_SEP).map((p) => p.trim()).filter(Boolean)
       : [];
-    const unknownScorers = torschuetzen.filter(
-      (p) => p && !knownSet.has(p.toLowerCase())
-    );
+    const unknownScorers = torschuetzen.filter((p) => p && !knownSet.has(p.toLowerCase()));
     if (unknownScorers.length > 0) {
       lineErrors.push(`Unbekannte Torschützen: ${unknownScorers.join(', ')}`);
+    }
+
+    // Tauschspieler validieren (optional — Spalte muss nicht vorhanden sein)
+    const tauschSpieler = row.tausch_spieler
+      ? row.tausch_spieler.split(PLAYER_SEP).map((p) => p.trim()).filter(Boolean)
+      : [];
+    if (tauschSpieler.length > 0) {
+      const allGamePlayers = new Set(allPlayers.map((p) => p.toLowerCase()));
+      const notInGame = tauschSpieler.filter((p) => !allGamePlayers.has(p.toLowerCase()));
+      if (notInGame.length > 0) {
+        lineErrors.push(`Tauschspieler nicht im Spiel: ${notInGame.join(', ')}`);
+      }
     }
 
     if (lineErrors.length > 0) {
       lineErrors.forEach((e) => errors.push(`Zeile ${row._lineNum}: ${e}`));
     } else if (lineWarnings.length > 0) {
       lineWarnings.forEach((w) => warnings.push(`Zeile ${row._lineNum}: ${w}`));
-      // Zeilen mit Datum-Duplikat nicht in valid aufnehmen
     } else {
       valid.push({
         datum: row.datum,
@@ -141,6 +149,7 @@ export function validateCSV(rows, knownPlayers, existingDates = []) {
         score1,
         score2,
         torschuetzen,
+        tauschSpieler,
         _lineNum: row._lineNum,
       });
     }
@@ -153,8 +162,7 @@ export function validateCSV(rows, knownPlayers, existingDates = []) {
 
 /**
  * Importiert validierte Spiele in Supabase.
- * Schreibt nur in games, game_results, game_players, goals —
- * player_stats und top_scorers werden nicht mehr benötigt (useMemo in App.jsx).
+ * Schreibt in games, game_results, game_players, goals, game_swaps.
  *
  * @param {object[]} validRows - Output von validateCSV().valid
  * @param {function} onProgress - Callback(current, total) für Fortschrittsanzeige
@@ -175,22 +183,13 @@ export async function importGames(validRows, onProgress = () => {}) {
 
       // 1. Spiel anlegen
       await supabase.from('games').insert([{
-        game_id: gameId,
-        date: row.datum,
-        team1: 'Gelb',
-        team2: 'Blau',
-        score1,
-        score2,
+        game_id: gameId, date: row.datum,
+        team1: 'Gelb', team2: 'Blau', score1, score2,
       }]);
 
       // 2. game_result
       await supabase.from('game_results').insert([{
-        game_id: gameId,
-        team1: 'Gelb',
-        team2: 'Blau',
-        score1,
-        score2,
-        winner,
+        game_id: gameId, team1: 'Gelb', team2: 'Blau', score1, score2, winner,
       }]);
 
       // 3. game_players
@@ -198,9 +197,7 @@ export async function importGames(validRows, onProgress = () => {}) {
         ...row.gelbSpieler.map((p) => ({ game_id: gameId, player_name: p, team: 'Gelb' })),
         ...row.blauSpieler.map((p) => ({ game_id: gameId, player_name: p, team: 'Blau' })),
       ];
-      if (gamePlayers.length > 0) {
-        await supabase.from('game_players').insert(gamePlayers);
-      }
+      if (gamePlayers.length > 0) await supabase.from('game_players').insert(gamePlayers);
 
       // 4. Torschützen
       if (row.torschuetzen.length > 0) {
@@ -211,6 +208,13 @@ export async function importGames(validRows, onProgress = () => {}) {
           team: gelbSet.has(p.toLowerCase()) ? 'Gelb' : 'Blau',
         }));
         await supabase.from('goals').insert(goals);
+      }
+
+      // 5. Tauschspieler (optional)
+      if (row.tauschSpieler && row.tauschSpieler.length > 0) {
+        await supabase.from('game_swaps').insert(
+          row.tauschSpieler.map((p) => ({ game_id: gameId, player_name: p }))
+        );
       }
 
       imported++;
@@ -225,35 +229,28 @@ export async function importGames(validRows, onProgress = () => {}) {
 // ─── EXPORT ────────────────────────────────────────────────────────────────────
 
 /**
- * Exportiert alle Spiele als CSV (Round-Trip-kompatibel mit parseCSV).
+ * Exportiert alle Spiele als CSV inkl. Tauschspieler (Round-Trip-kompatibel).
  * Löst automatisch einen Download aus.
  *
  * @returns {Promise<void>}
  */
 export async function exportGamesCSV() {
   const { data: games } = await supabase
-    .from('games')
-    .select('*')
-    .order('date', { ascending: true });
+    .from('games').select('*').order('date', { ascending: true });
 
-  if (!games || games.length === 0) {
-    throw new Error('Keine Spiele zum Exportieren vorhanden.');
-  }
+  if (!games || games.length === 0) throw new Error('Keine Spiele zum Exportieren vorhanden.');
 
   const gameIds = games.map((g) => g.game_id);
 
-  const { data: gamePlayers } = await supabase
-    .from('game_players')
-    .select('*')
-    .in('game_id', gameIds);
-
-  const { data: goals } = await supabase
-    .from('goals')
-    .select('*')
-    .in('game_id', gameIds);
+  const [{ data: gamePlayers }, { data: goals }, { data: gameSwaps }] = await Promise.all([
+    supabase.from('game_players').select('*').in('game_id', gameIds),
+    supabase.from('goals').select('*').in('game_id', gameIds),
+    supabase.from('game_swaps').select('*').in('game_id', gameIds),
+  ]);
 
   const gpMap = {};
   const goalsMap = {};
+  const swapsMap = {};
 
   (gamePlayers || []).forEach((gp) => {
     if (!gpMap[gp.game_id]) gpMap[gp.game_id] = { Gelb: [], Blau: [] };
@@ -265,11 +262,17 @@ export async function exportGamesCSV() {
     goalsMap[g.game_id].push(g.player_name);
   });
 
-  const rows = [CSV_HEADERS.join(',')];
+  (gameSwaps || []).forEach((s) => {
+    if (!swapsMap[s.game_id]) swapsMap[s.game_id] = [];
+    swapsMap[s.game_id].push(s.player_name);
+  });
+
+  const rows = [CSV_EXPORT_HEADERS.join(',')];
 
   games.forEach((game) => {
     const gp = gpMap[game.game_id] || { Gelb: [], Blau: [] };
     const scorers = goalsMap[game.game_id] || [];
+    const swaps = swapsMap[game.game_id] || [];
     const date = game.date.split('T')[0];
 
     rows.push([
@@ -279,6 +282,7 @@ export async function exportGamesCSV() {
       gp.Blau.join(PLAYER_SEP),
       game.score2,
       scorers.join(PLAYER_SEP),
+      swaps.join(PLAYER_SEP),
     ].join(','));
   });
 
@@ -287,49 +291,57 @@ export async function exportGamesCSV() {
 
 /**
  * Exportiert Spieler-Statistiken als CSV für Excel-Auswertung.
- * Berechnet aus games, game_players und goals — keine player_stats-Tabelle nötig.
+ * Berücksichtigt Tauschspieler (1,5 Punkte, eigene Spalte).
  * Löst automatisch einen Download aus.
  *
  * @returns {Promise<void>}
  */
 export async function exportStatsCSV() {
-  const [{ data: games }, { data: gamePlayers }, { data: goals }, { data: players }] = await Promise.all([
+  const [
+    { data: games }, { data: gamePlayers }, { data: goals },
+    { data: players }, { data: gameSwaps },
+  ] = await Promise.all([
     supabase.from('games').select('*'),
     supabase.from('game_players').select('*'),
     supabase.from('goals').select('*'),
     supabase.from('players').select('*'),
+    supabase.from('game_swaps').select('*'),
   ]);
 
-  if (!players || players.length === 0) {
-    throw new Error('Keine Spieler vorhanden.');
-  }
+  if (!players || players.length === 0) throw new Error('Keine Spieler vorhanden.');
 
-  // Stats aus Quelldaten berechnen
   const statsMap = {};
   players.forEach((p) => {
-    statsMap[p.name] = { player_name: p.name, games_played: 0, wins: 0, draws: 0, losses: 0, goals_for: 0, goals_against: 0, points: 0 };
+    statsMap[p.name] = { player_name: p.name, games_played: 0, wins: 0, draws: 0, losses: 0, swaps: 0, goals_for: 0, goals_against: 0, points: 0 };
   });
 
   const gameMap = {};
   (games || []).forEach((g) => { gameMap[g.game_id] = g; });
 
+  const swapSet = new Set((gameSwaps || []).map((s) => `${s.game_id}__${s.player_name}`));
+
   (gamePlayers || []).forEach((gp) => {
     const game = gameMap[gp.game_id];
     if (!game || !statsMap[gp.player_name]) return;
     const s = statsMap[gp.player_name];
+    const isSwapped = swapSet.has(`${gp.game_id}__${gp.player_name}`);
     const isTeam1 = gp.team === game.team1;
-    const goalsFor = isTeam1 ? game.score1 : game.score2;
-    const goalsAgainst = isTeam1 ? game.score2 : game.score1;
     const winner = game.score1 > game.score2 ? 'team1' : game.score2 > game.score1 ? 'team2' : 'draw';
     const isWinner = (winner === 'team1' && isTeam1) || (winner === 'team2' && !isTeam1);
     const isDraw = winner === 'draw';
+
     s.games_played += 1;
-    s.wins += isWinner ? 1 : 0;
-    s.draws += isDraw ? 1 : 0;
-    s.losses += (!isWinner && !isDraw) ? 1 : 0;
-    s.goals_for += goalsFor;
-    s.goals_against += goalsAgainst;
-    s.points += isDraw ? 1 : isWinner ? 3 : 0;
+    if (isSwapped) {
+      s.points += 1.5;
+      s.swaps += 1;
+    } else {
+      s.wins += isWinner ? 1 : 0;
+      s.draws += isDraw ? 1 : 0;
+      s.losses += (!isWinner && !isDraw) ? 1 : 0;
+      s.goals_for += isTeam1 ? game.score1 : game.score2;
+      s.goals_against += isTeam1 ? game.score2 : game.score1;
+      s.points += isDraw ? 1 : isWinner ? 3 : 0;
+    }
   });
 
   const scorerMap = {};
@@ -338,18 +350,19 @@ export async function exportStatsCSV() {
   const stats = Object.values(statsMap).sort((a, b) => b.points - a.points);
 
   const headers = [
-    'spieler', 'punkte', 'spiele', 'siege', 'unentschieden',
-    'niederlagen', 'tore_geschossen', 'tore_kassiert', 'torschuetzen_tore',
+    'spieler', 'punkte', 'spiele', 'siege', 'unentschieden', 'niederlagen',
+    'tausch', 'tore_geschossen', 'tore_kassiert', 'torschuetzen_tore',
     'siegquote_pct', 'punkte_pro_spiel',
   ];
 
   const rows = [headers.join(',')];
 
   stats.forEach((s) => {
-    const winPct = s.games_played > 0 ? ((s.wins / s.games_played) * 100).toFixed(1) : '0.0';
+    const normalGames = s.games_played - s.swaps;
+    const winPct = normalGames > 0 ? ((s.wins / normalGames) * 100).toFixed(1) : '0.0';
     const ppg = s.games_played > 0 ? (s.points / s.games_played).toFixed(2) : '0.00';
     rows.push([
-      s.player_name, s.points, s.games_played, s.wins, s.draws, s.losses,
+      s.player_name, s.points, s.games_played, s.wins, s.draws, s.losses, s.swaps,
       s.goals_for, s.goals_against, scorerMap[s.player_name] || 0, winPct, ppg,
     ].join(','));
   });
@@ -364,7 +377,6 @@ function _today() {
 }
 
 function _downloadCSV(content, filename) {
-  // BOM für korrekte Darstellung in Excel (inkl. Umlaute)
   const bom = '﻿';
   const blob = new Blob([bom + content], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
