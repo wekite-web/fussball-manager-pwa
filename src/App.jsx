@@ -1194,7 +1194,13 @@ render();
 
           {showStatsLegend && (
             <div style={{ ...styles.card, marginBottom: '1rem', padding: '1rem', fontSize: '0.8rem', lineHeight: '1.8' }}>
-              <div style={{ fontWeight: '600', color: GRUEN, marginBottom: '0.5rem' }}>📅 Anwesenheit & Form</div>
+              <div style={{ fontWeight: '600', color: GRUEN, marginBottom: '0.5rem' }}>🏆 Punkte & Erfolg</div>
+              <div><span style={{ color: 'white', fontWeight: '600' }}>Pkte</span> <span style={{ color: '#9ca3af' }}>= Punkte (Sieg=3, Unentschieden=1, Niederlage=0)</span></div>
+              <div><span style={{ color: 'white', fontWeight: '600' }}>Ø</span> <span style={{ color: '#9ca3af' }}>= Ø Punkte pro Spiel</span></div>
+              <div><span style={{ color: 'white', fontWeight: '600' }}>W%</span> <span style={{ color: '#9ca3af' }}>= Siegquote (nur normale Spiele)</span></div>
+              <div><span style={{ color: 'white', fontWeight: '600' }}>T:G</span> <span style={{ color: '#9ca3af' }}>= Team-Tore : Team-Gegentore (wenn dieser Spieler dabei ist)</span></div>
+              <div><span style={{ color: GELB, fontWeight: '600' }}>T</span> <span style={{ color: '#9ca3af' }}>= Tauschspieler-Einsätze (immer 1,5 Pkte)</span></div>
+              <div style={{ fontWeight: '600', color: GRUEN, marginTop: '0.75rem', marginBottom: '0.5rem' }}>📅 Anwesenheit & Form</div>
               <div><span style={{ color: 'white', fontWeight: '600' }}>Spiele</span> <span style={{ color: '#9ca3af' }}>= gespielte / Gesamtspiele</span></div>
               <div><span style={{ color: 'white', fontWeight: '600' }}>%</span> <span style={{ color: '#9ca3af' }}>= Anwesenheitsquote</span></div>
               <div><span style={{ color: 'white', fontWeight: '600' }}>🔥</span> <span style={{ color: '#9ca3af' }}>= aktuelle Anwesenheits-Streak</span></div>
@@ -1204,14 +1210,46 @@ render();
               <div style={{ fontWeight: '600', color: GRUEN, marginTop: '0.75rem', marginBottom: '0.5rem' }}>⚽ Tore & Effizienz</div>
               <div><span style={{ color: 'white', fontWeight: '600' }}>Tore</span> <span style={{ color: '#9ca3af' }}>= persönlich geschossene Tore</span></div>
               <div><span style={{ color: 'white', fontWeight: '600' }}>Ø/Spiel</span> <span style={{ color: '#9ca3af' }}>= Ø Tore pro Spiel</span></div>
-              <div style={{ fontWeight: '600', color: GRUEN, marginTop: '0.75rem', marginBottom: '0.5rem' }}>🏆 Punkte & Erfolg</div>
-              <div><span style={{ color: 'white', fontWeight: '600' }}>Pkte</span> <span style={{ color: '#9ca3af' }}>= Punkte (Sieg=3, Unentschieden=1, Niederlage=0)</span></div>
-              <div><span style={{ color: 'white', fontWeight: '600' }}>Ø</span> <span style={{ color: '#9ca3af' }}>= Ø Punkte pro Spiel</span></div>
-              <div><span style={{ color: 'white', fontWeight: '600' }}>W%</span> <span style={{ color: '#9ca3af' }}>= Siegquote (nur normale Spiele)</span></div>
-              <div><span style={{ color: 'white', fontWeight: '600' }}>T:G</span> <span style={{ color: '#9ca3af' }}>= Team-Tore : Team-Gegentore (wenn dieser Spieler dabei ist)</span></div>
-              <div><span style={{ color: GELB, fontWeight: '600' }}>T</span> <span style={{ color: '#9ca3af' }}>= Tauschspieler-Einsätze (immer 1,5 Pkte)</span></div>
             </div>
           )}
+
+          <div style={styles.section}>
+            <h2 style={styles.sectionTitle}>🏆 Punkte & Erfolg</h2>
+            <div style={styles.card}>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
+                  <thead>
+                    <tr style={{ borderBottom: `2px solid ${GRUEN}` }}>
+                      <th style={{ textAlign: 'left', padding: '0.4rem', fontWeight: '600' }}>Spieler</th>
+                      <th style={{ textAlign: 'center', padding: '0.4rem', fontWeight: '600' }}>Pkte</th>
+                      <th style={{ textAlign: 'center', padding: '0.4rem', fontWeight: '600' }}>Ø</th>
+                      <th style={{ textAlign: 'center', padding: '0.4rem', fontWeight: '600' }}>W%</th>
+                      <th style={{ textAlign: 'center', padding: '0.4rem', fontWeight: '600' }}>T:G</th>
+                      <th style={{ textAlign: 'center', padding: '0.4rem', fontWeight: '600' }}>T</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {playerStats.map((stat, idx) => {
+                      const hasNormalGames = (stat.games_played - stat.swaps) > 0;
+                      return (
+                      <tr key={idx} style={{ borderBottom: '1px solid rgba(16,185,129,0.1)' }}>
+                        <td style={{ textAlign: 'left', padding: '0.4rem' }}>
+                          {stat.player_name.substring(0, 10)}
+                          {admins.some((a) => a.player_name === stat.player_name) && '👑'}
+                        </td>
+                        <td style={{ textAlign: 'center', padding: '0.4rem', color: GRUEN, fontWeight: '600' }}>{stat.points}</td>
+                        <td style={{ textAlign: 'center', padding: '0.4rem' }}>{stat.games_played > 0 ? (stat.points / stat.games_played).toFixed(2) : '0.00'}</td>
+                        <td style={{ textAlign: 'center', padding: '0.4rem' }}>{hasNormalGames ? ((stat.wins / (stat.games_played - stat.swaps)) * 100).toFixed(0) : '0'}%</td>
+                        <td style={{ textAlign: 'center', padding: '0.4rem' }}>{hasNormalGames ? `${stat.goals_for}:${stat.goals_against}` : '—'}</td>
+                        <td style={{ textAlign: 'center', padding: '0.4rem', color: stat.swaps > 0 ? GELB : '#6b7280' }}>{stat.swaps > 0 ? stat.swaps : '—'}</td>
+                      </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
 
           <div style={styles.section}>
             <h2 style={styles.sectionTitle}>📅 Anwesenheit & Form</h2>
@@ -1278,44 +1316,6 @@ render();
                           <td style={{ textAlign: 'center', padding: '0.4rem', color: GRUEN, fontWeight: '600' }}>{indGoals > 0 ? indGoals : '—'}</td>
                           <td style={{ textAlign: 'center', padding: '0.4rem' }}>{getGoalsPerGame(stat.player_name)}</td>
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-
-          <div style={styles.section}>
-            <h2 style={styles.sectionTitle}>🏆 Punkte & Erfolg</h2>
-            <div style={styles.card}>
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
-                  <thead>
-                    <tr style={{ borderBottom: `2px solid ${GRUEN}` }}>
-                      <th style={{ textAlign: 'left', padding: '0.4rem', fontWeight: '600' }}>Spieler</th>
-                      <th style={{ textAlign: 'center', padding: '0.4rem', fontWeight: '600' }}>Pkte</th>
-                      <th style={{ textAlign: 'center', padding: '0.4rem', fontWeight: '600' }}>Ø</th>
-                      <th style={{ textAlign: 'center', padding: '0.4rem', fontWeight: '600' }}>W%</th>
-                      <th style={{ textAlign: 'center', padding: '0.4rem', fontWeight: '600' }}>T:G</th>
-                      <th style={{ textAlign: 'center', padding: '0.4rem', fontWeight: '600' }}>T</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {playerStats.map((stat, idx) => {
-                      const hasNormalGames = (stat.games_played - stat.swaps) > 0;
-                      return (
-                      <tr key={idx} style={{ borderBottom: '1px solid rgba(16,185,129,0.1)' }}>
-                        <td style={{ textAlign: 'left', padding: '0.4rem' }}>
-                          {stat.player_name.substring(0, 10)}
-                          {admins.some((a) => a.player_name === stat.player_name) && '👑'}
-                        </td>
-                        <td style={{ textAlign: 'center', padding: '0.4rem', color: GRUEN, fontWeight: '600' }}>{stat.points}</td>
-                        <td style={{ textAlign: 'center', padding: '0.4rem' }}>{stat.games_played > 0 ? (stat.points / stat.games_played).toFixed(2) : '0.00'}</td>
-                        <td style={{ textAlign: 'center', padding: '0.4rem' }}>{hasNormalGames ? ((stat.wins / (stat.games_played - stat.swaps)) * 100).toFixed(0) : '0'}%</td>
-                        <td style={{ textAlign: 'center', padding: '0.4rem' }}>{hasNormalGames ? `${stat.goals_for}:${stat.goals_against}` : '—'}</td>
-                        <td style={{ textAlign: 'center', padding: '0.4rem', color: stat.swaps > 0 ? GELB : '#6b7280' }}>{stat.swaps > 0 ? stat.swaps : '—'}</td>
-                      </tr>
                       );
                     })}
                   </tbody>
