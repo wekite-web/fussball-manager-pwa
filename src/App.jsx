@@ -1148,7 +1148,13 @@ render();
                 if (!goalMap[g.player_name]) goalMap[g.player_name] = { team: g.team, count: 0 };
                 goalMap[g.player_name].count += 1;
               });
-              const scorerList = Object.entries(goalMap).sort((a, b) => b[1].count - a[1].count);
+              const scorerList = Object.entries(goalMap).sort((a, b) => {
+                const aTeam = a[1].team === game.team1 ? 0 : 1;
+                const bTeam = b[1].team === game.team1 ? 0 : 1;
+                if (aTeam !== bTeam) return aTeam - bTeam;
+                if (b[1].count !== a[1].count) return b[1].count - a[1].count;
+                return a[0].localeCompare(b[0]);
+              });
 
               const isGelbWin = game.score1 > game.score2;
               const isBlauWin = game.score2 > game.score1;
