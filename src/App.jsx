@@ -28,6 +28,7 @@ export default function FussballManagerPWA() {
   const [renamingPlayer, setRenamingPlayer] = useState(null);
   const [newPlayerName, setNewPlayerName] = useState('');
   const [editingPositions, setEditingPositions] = useState({});
+  const [editingInfo, setEditingInfo] = useState({});
   const [editingGame, setEditingGame] = useState(null);
   const [generatedTeams, setGeneratedTeams] = useState(null);
   const [formData, setFormData] = useState({
@@ -799,6 +800,23 @@ render();
     }
   };
 
+  const handleSavePlayerInfo = async (playerId) => {
+    if (!isAdminMode) { alert('Nur Admins!'); return; }
+    const info = editingInfo[playerId];
+    try {
+      await supabase.from('players').update({
+        birthdate: info.birthdate || null,
+        notes: info.notes || null,
+      }).eq('id', playerId);
+      await loadPlayers();
+      setEditingInfo({ ...editingInfo, [playerId]: false });
+      showNotification('✅ Gespeichert');
+    } catch (err) {
+      console.error('Fehler:', err);
+      alert('Fehler beim Speichern');
+    }
+  };
+
   // ─── STYLES ────────────────────────────────────────────────────────────────
   const styles = {
     container: {
@@ -1559,6 +1577,48 @@ render();
                       <button onClick={() => setEditingPositions({ ...editingPositions, [player.id]: { sturm: pos.sturm, mittelfeld: pos.mittelfeld, abwehr: pos.abwehr } })}
                         style={{ ...styles.button, ...styles.buttonSecondary, marginBottom: 0, padding: '0.5rem', fontSize: '0.85rem' }}>✏️ Bearbeiten</button>
                     )}
+
+                    {/* Geburtsdatum & Notizen */}
+                    {(() => {
+                      const isEditingInfo = editingInfo[player.id];
+                      const age = player.birthdate
+                        ? Math.floor((new Date() - new Date(player.birthdate)) / (365.25 * 24 * 3600 * 1000))
+                        : null;
+                      return (
+                        <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                          {isEditingInfo ? (
+                            <div>
+                              <label style={{ fontSize: '0.75rem', color: '#9ca3af', display: 'block', marginBottom: '0.25rem' }}>🎂 Geburtsdatum</label>
+                              <input type="date" value={editingInfo[player.id].birthdate || ''} onChange={(e) => setEditingInfo({ ...editingInfo, [player.id]: { ...editingInfo[player.id], birthdate: e.target.value } })}
+                                style={{ ...styles.input, marginBottom: '0.75rem', fontSize: '0.85rem', padding: '0.5rem' }} />
+                              <label style={{ fontSize: '0.75rem', color: '#9ca3af', display: 'block', marginBottom: '0.25rem' }}>📝 Notiz</label>
+                              <textarea value={editingInfo[player.id].notes || ''} onChange={(e) => setEditingInfo({ ...editingInfo, [player.id]: { ...editingInfo[player.id], notes: e.target.value } })}
+                                rows={3} placeholder="Freitext..."
+                                style={{ ...styles.input, marginBottom: '0.75rem', fontSize: '0.85rem', padding: '0.5rem', resize: 'vertical', fontFamily: 'inherit' }} />
+                              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                <button onClick={() => handleSavePlayerInfo(player.id)}
+                                  style={{ ...styles.button, ...styles.buttonPrimary, marginBottom: 0, flex: 1, padding: '0.5rem', fontSize: '0.85rem' }}>✅ Speichern</button>
+                                <button onClick={() => setEditingInfo({ ...editingInfo, [player.id]: false })}
+                                  style={{ ...styles.button, ...styles.buttonSecondary, marginBottom: 0, flex: 1, padding: '0.5rem', fontSize: '0.85rem' }}>✕ Abbrechen</button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div>
+                              <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.8rem', color: '#9ca3af', marginBottom: '0.5rem' }}>
+                                {player.birthdate && <span>🎂 {player.birthdate} <span style={{ color: GRUEN, fontWeight: '600' }}>({age} J.)</span></span>}
+                                {isAdminMode && player.notes && <span style={{ color: '#d1d5db' }}>📝 {player.notes}</span>}
+                              </div>
+                              {isAdminMode && (
+                                <button onClick={() => setEditingInfo({ ...editingInfo, [player.id]: { birthdate: player.birthdate || '', notes: player.notes || '' } })}
+                                  style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: '0.75rem', padding: 0 }}>
+                                  ✏️ {player.birthdate || player.notes ? 'Info bearbeiten' : 'Geb. & Notiz hinzufügen'}
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 );
               })}
