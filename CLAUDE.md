@@ -49,9 +49,20 @@ Jede View ist ein eigener `if (view === '...') return (...)` Block am Ende der K
 - **Zeile 2 (Tab-Nav):** 6 Tabs — Home / Tag / Spiele / Stats / Tore / Pro — Tab-Stil mit grünem Unterstrich
 - `container.paddingTop: '108px'` gleicht die Höhe beider Zeilen aus
 
-**Admin-Modus:** PW-geschützt via hardcoded `ADMIN_PASSWORD` in `App.jsx`. Kein User-basiertes Rollen-System — wer das PW kennt, bekommt Admin-Zugriff (`isAdminMode` State). Unabhängig von der `admins`-Tabelle.
+**Admin-Modus:** Login via `supabase.auth.signInWithPassword()` (Email + Passwort). Session wird beim App-Start via `getSession()` wiederhergestellt und über `onAuthStateChange` synchron gehalten. Logout via `supabase.auth.signOut()`. `isAdminMode` State spiegelt den Session-Status. Unabhängig von der `admins`-Tabelle.
+
+### Konfiguration
+
+Credentials werden über Vite-Env-Variablen geladen (`import.meta.env.VITE_*`). Lokal via `.env` (gitignored), in Vercel über Environment Variables:
+
+| Variable | Zweck |
+|---|---|
+| `VITE_SUPABASE_URL` | Supabase Projekt-URL |
+| `VITE_SUPABASE_KEY` | Supabase Publishable (anon) Key |
 
 ### Supabase-Tabellen
+
+RLS ist auf allen Tabellen aktiv: `SELECT` für alle (anon), `INSERT/UPDATE/DELETE` nur für authentifizierte User.
 
 Die App liest **nur Rohdaten** — alle Statistiken werden zur Laufzeit via `useMemo` aus diesen Tabellen berechnet:
 
@@ -91,7 +102,7 @@ Punkte: Sieg=3, Unentschieden=1, Niederlage=0. Tauschspieler: immer 1,5, unabhä
 
 ### CSV-Modul (`csvUtils.js`)
 
-Eigene Supabase-Instanz, schreibt identisch zu `handleNewGame()`. CSV-Format:
+Eigene Supabase-Instanz (liest Credentials ebenfalls aus `import.meta.env`), schreibt identisch zu `handleNewGame()`. CSV-Format:
 ```
 datum,gelb_spieler,gelb_tore,blau_spieler,blau_tore,torschuetzen,tausch_spieler
 2026-01-15,Max|Anna|Tom,3,Ben|Lisa|Kai,2,Max|Anna,Tom
