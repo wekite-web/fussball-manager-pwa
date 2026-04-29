@@ -1039,7 +1039,7 @@ export default function FussballManagerPWA() {
                       </tr>
                     </thead>
                     <tbody>
-                      {playerStats.map((stat, idx) => {
+                      {[...playerStats].sort((a, b) => parseFloat((extendedStats[b.player_name] || {}).attendance || 0) - parseFloat((extendedStats[a.player_name] || {}).attendance || 0)).map((stat, idx) => {
                         const ext = extendedStats[stat.player_name] || {};
                         return (
                           <tr key={idx} style={{ borderBottom: '1px solid rgba(16,185,129,0.1)' }}>
@@ -1073,7 +1073,12 @@ export default function FussballManagerPWA() {
                     </tr>
                   </thead>
                   <tbody>
-                    {playerStats.map((stat, idx) => {
+                    {[...playerStats].sort((a, b) => {
+                      const goalsA = (topScorers.find((s) => s.player_name === a.player_name) || {}).total_goals || 0;
+                      const goalsB = (topScorers.find((s) => s.player_name === b.player_name) || {}).total_goals || 0;
+                      if (goalsB !== goalsA) return goalsB - goalsA;
+                      return (parseFloat(getGoalsPerGame(b.player_name)) || 0) - (parseFloat(getGoalsPerGame(a.player_name)) || 0);
+                    }).map((stat, idx) => {
                       const indGoals = (topScorers.find((s) => s.player_name === stat.player_name) || {}).total_goals || 0;
                       return (
                         <tr key={idx} style={{ borderBottom: '1px solid rgba(16,185,129,0.1)' }}>
