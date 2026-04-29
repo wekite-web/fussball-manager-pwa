@@ -587,6 +587,198 @@ export default function FussballManagerPWA() {
     catch (err) { alert(err.message); }
   };
 
+  const handleExportHTML = () => {
+    if (games.length === 0) { showNotification('Keine Spiele vorhanden'); return; }
+
+    const sorted = [...games].sort((a, b) => a.date.localeCompare(b.date));
+    const seasonStart = sorted[0].date;
+    const seasonEnd = sorted[sorted.length - 1].date;
+    const year = seasonEnd.substring(0, 4);
+    const totalGoalsCount = goals.length;
+
+    const mvp = playerStats[0];
+    const topScorer = topScorers[0];
+    const attKing = [...playerStats].sort((a, b) =>
+      parseFloat((extendedStats[b.player_name] || {}).attendance || 0) -
+      parseFloat((extendedStats[a.player_name] || {}).attendance || 0)
+    )[0];
+    const effKing = playerStats.filter(s => (s.games_played - s.swaps) >= 3).sort((a, b) =>
+      (parseFloat(getGoalsPerGame(b.player_name)) || 0) - (parseFloat(getGoalsPerGame(a.player_name)) || 0)
+    )[0];
+
+    const awardsHTML = [
+      mvp && `<div class="award"><div class="ai">🥇</div><div class="at">MVP</div><div class="an">${mvp.player_name}</div><div class="av">${mvp.points} Pkte</div></div>`,
+      topScorer && `<div class="award"><div class="ai">⚽</div><div class="at">Torschützen-König</div><div class="an">${topScorer.player_name}</div><div class="av">${topScorer.total_goals} Tore</div></div>`,
+      attKing && `<div class="award"><div class="ai">📅</div><div class="at">Anwesenheits-König</div><div class="an">${attKing.player_name}</div><div class="av">${(extendedStats[attKing.player_name] || {}).attendance}%</div></div>`,
+      effKing && `<div class="award"><div class="ai">⚡</div><div class="at">Effizienz-König</div><div class="an">${effKing.player_name}</div><div class="av">${getGoalsPerGame(effKing.player_name)} ⚽/Spiel</div></div>`,
+    ].filter(Boolean).join('');
+
+    const pointsRows = playerStats.map((s, i) => {
+      const hasNormal = (s.games_played - s.swaps) > 0;
+      const winPct = hasNormal ? ((s.wins / (s.games_played - s.swaps)) * 100).toFixed(0) : '0';
+      const medal = i === 0 ? '🥇 ' : i === 1 ? '🥈 ' : i === 2 ? '🥉 ' : (i + 1) + '. ';
+      return `<tr><td>${medal}${s.player_name}</td><td class="c bold green">${s.points}</td><td class="c">${s.games_played > 0 ? (s.points / s.games_played).toFixed(2) : '0.00'}</td><td class="c">${winPct}%</td><td class="c">${s.wins}/${s.draws}/${s.losses}</td><td class="c">${hasNormal ? s.goals_for + ':' + s.goals_against : '—'}</td></tr>`;
+    }).join('');
+
+    const attRows = [...playerStats]
+      .sort((a, b) =>
+        parseFloat((extendedStats[b.player_name] || {}).attendance || 0) -
+        parseFloat((extendedStats[a.player_name] || {}).attendance || 0)
+      )
+      .map((s, i) => {
+        const ext = extendedStats[s.player_name] || {};
+        return `<tr><td>${i + 1}. ${s.player_name}</td><td class="c bold green">${ext.attendance}%</td><td class="c">${ext.playedGames}/${(ext.playedGames || 0) + (ext.missedGames || 0)}</td><td class="c">${ext.currentStreak}</td><td class="c">${ext.maxStreak}</td></tr>`;
+      }).join('');
+
+    const scorerRows = topScorers.map((s, i) => {
+      const medal = i === 0 ? '🥇 ' : i === 1 ? '🥈 ' : i === 2 ? '🥉 ' : (i + 1) + '. ';
+      return `<tr><td>${medal}${s.player_name}</td><td class="c bold green">${s.total_goals} ⚽</td><td class="c">${getGoalsPerGame(s.player_name)}/Spiel</td></tr>`;
+    }).join('');
+
+    const gamesHTML = [...games]
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .map(g => {
+        const gp1 = gamePlayers.filter(p => p.game_id === g.game_id && p.team === 'Gelb').map(p => p.player_name).join(', ');
+        const gp2 = gamePlayers.filter(p => p.game_id === g.game_id && p.team === 'Blau').map(p => p.player_name).join(', ');
+        const gameGoals = goals.filter(goal => goal.game_id === g.game_id).map(goal => goal.player_name);
+        const isGelbWin = g.score1 > g.score2;
+        const isBlauWin = g.score2 > g.score1;
+        const goalsLine = gameGoals.length > 0 ? `<div class="ggoals">⚽ ${gameGoals.join(', ')}</div>` : '';
+        return `<div class="grow"><span class="dbadge">${g.date}</span><span class="t1${isGelbWin ? ' win-y' : ''}">${gp1}</span><span class="sbadge">${g.score1} : ${g.score2}</span><span class="t2${isBlauWin ? ' win-b' : ''}">${gp2}</span>${goalsLine}</div>`;
+      }).join('');
+
+    const numSlides = 6;
+    const dotsHTML = Array.from({ length: numSlides }, (_, i) =>
+      '<div class="dot' + (i === 0 ? ' active' : '') + '" onclick="go(' + i + ')"></div>'
+    ).join('');
+
+    const html = '<!DOCTYPE html>\n' +
+`<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Saison ${year} – Fußball Manager</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0f172a;color:#fff;font-family:system-ui,-apple-system,sans-serif;overflow:hidden;height:100vh;width:100vw}
+.wrap{position:relative;width:100vw;height:100vh;overflow:hidden}
+.slide{position:absolute;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;justify-content:center;align-items:center;padding:2rem 2rem 5rem;overflow-y:auto;transition:transform .4s cubic-bezier(.4,0,.2,1)}
+.nav{position:fixed;bottom:1.25rem;left:0;right:0;display:flex;justify-content:center;align-items:center;gap:1.25rem;z-index:100}
+.btn{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.2);color:#fff;width:2.5rem;height:2.5rem;border-radius:50%;cursor:pointer;font-size:1rem;display:flex;align-items:center;justify-content:center;transition:background .2s;font-family:inherit}
+.btn:hover{background:rgba(16,185,129,.4);border-color:#10b981}
+.dots{display:flex;gap:.4rem;align-items:center}
+.dot{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.25);cursor:pointer;transition:all .25s}
+.dot.active{background:#10b981;width:20px;border-radius:4px}
+.counter{position:fixed;top:1rem;right:1.5rem;color:rgba(255,255,255,.3);font-size:.8rem;z-index:100}
+.big{font-size:clamp(2rem,5vw,4rem);font-weight:800;color:#10b981;text-align:center;margin-bottom:.5rem}
+.sub{color:rgba(255,255,255,.55);text-align:center;font-size:clamp(.9rem,2.5vw,1.4rem)}
+.nums{display:flex;gap:3rem;margin-top:2rem;text-align:center}
+.num{font-size:2.5rem;font-weight:800}
+.numlbl{color:rgba(255,255,255,.5);font-size:.85rem;margin-top:.25rem}
+.stitle{font-size:1.4rem;font-weight:700;color:#10b981;margin-bottom:1.5rem;text-align:center}
+.awards{display:grid;grid-template-columns:repeat(2,1fr);gap:1rem;max-width:560px;width:100%}
+.award{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:1.25rem;text-align:center}
+.ai{font-size:2rem;margin-bottom:.4rem}
+.at{font-size:.7rem;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.2rem}
+.an{font-size:1.1rem;font-weight:700;margin-bottom:.2rem}
+.av{font-size:.9rem;color:#10b981;font-weight:600}
+.tw{width:100%;max-width:700px;overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:.82rem}
+th{padding:.45rem .6rem;text-align:center;font-weight:600;border-bottom:2px solid #10b981;color:rgba(255,255,255,.65)}
+th:first-child{text-align:left}
+td{padding:.35rem .6rem;text-align:center;border-bottom:1px solid rgba(16,185,129,.1)}
+td:first-child{text-align:left}
+tr:hover td{background:rgba(255,255,255,.03)}
+.c{text-align:center}
+.green{color:#10b981}
+.bold{font-weight:700}
+.gl{width:100%;max-width:720px;max-height:65vh;overflow-y:auto;padding-right:.25rem}
+.grow{background:rgba(255,255,255,.03);border-radius:8px;padding:.55rem .75rem;margin-bottom:.35rem;display:grid;grid-template-columns:72px 1fr 52px 1fr;gap:.25rem .6rem;align-items:center;font-size:.78rem}
+.dbadge{color:rgba(255,255,255,.35);font-size:.7rem;white-space:nowrap}
+.sbadge{background:rgba(255,255,255,.08);border-radius:6px;padding:.15rem .5rem;font-weight:700;font-size:.88rem;text-align:center;white-space:nowrap}
+.t1{color:rgba(255,255,255,.7)}.t2{color:rgba(255,255,255,.7)}
+.win-y{color:#f59e0b;font-weight:700}.win-b{color:#3b82f6;font-weight:700}
+.ggoals{grid-column:1/-1;color:rgba(255,255,255,.38);font-size:.7rem;padding-top:.1rem}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="slide">
+  <div class="big">⚽ Saison ${year}</div>
+  <div class="sub">${seasonStart} – ${seasonEnd}</div>
+  <div class="nums">
+    <div><div class="num" style="color:#10b981">${games.length}</div><div class="numlbl">Spiele</div></div>
+    <div><div class="num" style="color:#f59e0b">${playerStats.length}</div><div class="numlbl">Spieler</div></div>
+    <div><div class="num" style="color:#3b82f6">${totalGoalsCount}</div><div class="numlbl">Tore</div></div>
+  </div>
+</div>
+
+<div class="slide">
+  <div class="stitle">🏆 Saison-Awards</div>
+  <div class="awards">${awardsHTML}</div>
+</div>
+
+<div class="slide">
+  <div class="stitle">📊 Punkte &amp; Erfolg</div>
+  <div class="tw"><table>
+    <thead><tr><th>Spieler</th><th>Pkte</th><th>Ø</th><th>W%</th><th>S/U/N</th><th>T:G</th></tr></thead>
+    <tbody>${pointsRows}</tbody>
+  </table></div>
+</div>
+
+<div class="slide">
+  <div class="stitle">📅 Anwesenheit &amp; Form</div>
+  <div class="tw"><table>
+    <thead><tr><th>Spieler</th><th>%</th><th>Spiele</th><th>🔥 Streak</th><th>⭐ Best</th></tr></thead>
+    <tbody>${attRows}</tbody>
+  </table></div>
+</div>
+
+<div class="slide">
+  <div class="stitle">⚽ Torschützen</div>
+  <div class="tw"><table>
+    <thead><tr><th>Spieler</th><th>Tore</th><th>Ø/Spiel</th></tr></thead>
+    <tbody>${scorerRows}</tbody>
+  </table></div>
+</div>
+
+<div class="slide">
+  <div class="stitle">📋 Alle Spiele</div>
+  <div class="gl">${gamesHTML}</div>
+</div>
+
+</div>
+<div class="nav">
+  <button class="btn" onclick="go(curr-1)">&#9664;</button>
+  <div class="dots" id="dots">${dotsHTML}</div>
+  <button class="btn" onclick="go(curr+1)">&#9654;</button>
+</div>
+<div class="counter"><span id="cn">1</span> / ${numSlides}</div>
+<script>
+var slides=document.querySelectorAll('.slide');
+var dots=document.querySelectorAll('.dot');
+var cn=document.getElementById('cn');
+var curr=0;
+function render(){slides.forEach(function(s,i){s.style.transform='translateX('+(i-curr)*100+'%)'});}
+function updNav(){dots.forEach(function(d,i){d.classList.toggle('active',i===curr)});cn.textContent=curr+1;}
+function go(n){if(n<0||n>=slides.length)return;curr=n;render();updNav();}
+document.addEventListener('keydown',function(e){if(e.key==='ArrowRight')go(curr+1);if(e.key==='ArrowLeft')go(curr-1);});
+render();
+</script>
+</body>
+</html>`;
+
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'saison-' + year + '.html';
+    link.click();
+    URL.revokeObjectURL(url);
+    showNotification('✅ Saison-Export erstellt');
+  };
+
   // ─── STYLES ────────────────────────────────────────────────────────────────
   const styles = {
     container: {
@@ -1596,8 +1788,14 @@ export default function FussballManagerPWA() {
               <button style={{ ...styles.button, ...styles.buttonSecondary }} onClick={handleExportStats}>
                 📊 Statistiken exportieren (CSV)
               </button>
-              <div style={{ fontSize: '0.8rem', color: '#6b7280' }}>
+              <div style={{ fontSize: '0.8rem', color: '#6b7280', marginBottom: '1rem' }}>
                 Punkte, Tore, Siegquote — für Excel
+              </div>
+              <button style={{ ...styles.button, ...styles.buttonSecondary }} onClick={handleExportHTML}>
+                🖥️ Saison-Präsentation (HTML)
+              </button>
+              <div style={{ fontSize: '0.8rem', color: '#6b7280' }}>
+                Alle Stats als Slide-Show — standalone, kein Internet nötig
               </div>
             </div>
           </div>
