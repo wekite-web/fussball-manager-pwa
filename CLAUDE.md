@@ -34,13 +34,13 @@ Jede View ist ein eigener `if (view === '...') return (...)` Block am Ende der K
 |---|---|
 | `home` | Dashboard: Quick Stats (Führende), letztes Spiel, Admin-Aktionen, Team-Generator |
 | `spieltag` | Wer ist heute dabei? — Spieler anhaken → Teams mit Balance-% generieren |
-| `ergebnisse` | Vollständige Spielliste mit Aufstellung, Torschützen, Tauschspieler-Markierung |
+| `ergebnisse` | Vollständige Spielliste mit Aufstellung, Torschützen (sortiert: Gelb → Blau, Tore desc, alphabetisch), Tauschspieler-Markierung |
 | `stats` | Spieler-Tabelle (Punkte, S/U/N, T/G, Tordifferenz, Anwesenheit, Streaks) |
 | `scorers` | Torschützen-Rangliste |
 | `statspro` | Mannschafts-Bilanz Kopf-an-Kopf + Spielerbewertungs-Karten (OVR) |
-| `players` | Spieler verwalten (hinzufügen, umbenennen, löschen, Positionen setzen) |
+| `players` | Spieler verwalten (hinzufügen, umbenennen, löschen, Positionen setzen, Geburtsdatum & Notiz — Notiz nur im Admin-Modus sichtbar/editierbar) |
 | `newgame` | Spiel erfassen / bearbeiten (Edit: alle Felder vorbelegt, vollständiger Überschreib-Save) |
-| `csv` | CSV Import/Export UI |
+| `csv` | CSV Import/Export UI + Saison-Reset (nur Admin: löscht alle Spieldaten, behält Spieler) |
 
 ### Navigation
 
@@ -68,7 +68,7 @@ Die App liest **nur Rohdaten** — alle Statistiken werden zur Laufzeit via `use
 
 | Tabelle | Inhalt |
 |---|---|
-| `players` | Spieler-Register (`id`, `name`) |
+| `players` | Spieler-Register (`id`, `name`, `birthdate` date optional, `notes` text optional) |
 | `player_positions` | Positions-Bewertungen (`position_sturm`, `position_mittelfeld`, `position_abwehr`, Skala 1–10) |
 | `games` | Spiel-Datensätze (`id` PK numerisch, `game_id` String `game_<timestamp>`, `date`, `team1`, `team2`, `score1`, `score2`) |
 | `game_results` | Duplikat des Ergebnisses (für Abfragen mit `winner`-Feld) |
