@@ -779,6 +779,26 @@ render();
     showNotification('✅ Saison-Export erstellt');
   };
 
+  const handleSeasonReset = async () => {
+    if (!isAdminMode) { alert('Nur Admins!'); return; }
+    if (!confirm('⚠️ SAISON-RESET\n\nAlle Spiele, Tore und Statistiken werden unwiderruflich gelöscht.\nSpieler und Positionsbewertungen bleiben erhalten.\n\nWirklich fortfahren?')) return;
+    if (!confirm('Letzte Warnung: Diese Aktion kann NICHT rückgängig gemacht werden!\n\nJetzt löschen?')) return;
+    try {
+      await Promise.all([
+        supabase.from('game_players').delete().not('game_id', 'is', null),
+        supabase.from('goals').delete().not('game_id', 'is', null),
+        supabase.from('game_swaps').delete().not('game_id', 'is', null),
+        supabase.from('game_results').delete().not('game_id', 'is', null),
+      ]);
+      await supabase.from('games').delete().not('id', 'is', null);
+      await loadAll();
+      showNotification('✅ Saison-Reset abgeschlossen — bereit für neue Saison');
+    } catch (err) {
+      console.error('Reset-Fehler:', err);
+      alert('Fehler beim Reset: ' + err.message);
+    }
+  };
+
   // ─── STYLES ────────────────────────────────────────────────────────────────
   const styles = {
     container: {
@@ -1904,6 +1924,20 @@ render();
               )}
             </div>
           </div>
+
+          {isAdminMode && (
+            <div style={styles.section}>
+              <h2 style={styles.sectionTitle}>🗑️ Saison-Reset</h2>
+              <div style={styles.card}>
+                <div style={{ fontSize: '0.85rem', color: '#f87171', marginBottom: '1rem', lineHeight: '1.5' }}>
+                  ⚠️ Löscht alle Spiele, Tore und Statistiken. Spieler und Positionsbewertungen bleiben erhalten. Nicht rückgängig zu machen.
+                </div>
+                <button style={{ ...styles.button, ...styles.buttonDanger }} onClick={handleSeasonReset}>
+                  🗑️ Saison zurücksetzen
+                </button>
+              </div>
+            </div>
+          )}
 
         </div>
       </div>
