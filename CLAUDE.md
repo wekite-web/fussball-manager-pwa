@@ -46,7 +46,7 @@ Jede View ist ein eigener `if (view === '...') return (...)` Block am Ende der K
 
 `TopNav` ist ein zweigeteiltes, `position: fixed` Element:
 - **Zeile 1 (Header):** `<<` Back-Button + Titel "⚽ Manager" + Admin-Toggle (🔓/🔐), immer sichtbar
-- **Zeile 2 (Tab-Nav):** 6 Tabs — Home / Tag / Spiele / Stats / Tore / Pro — Tab-Stil mit grünem Unterstrich
+- **Zeile 2 (Tab-Nav):** 6 Tabs — Home / Spiele / Stats / Tore / Pro / Tag — Tab-Stil mit grünem Unterstrich
 - `container.paddingTop: '108px'` gleicht die Höhe beider Zeilen aus
 
 **Admin-Modus:** Login via `supabase.auth.signInWithPassword()` (Email + Passwort). Session wird beim App-Start via `getSession()` wiederhergestellt und über `onAuthStateChange` synchron gehalten. Logout via `supabase.auth.signOut()`. `isAdminMode` State spiegelt den Session-Status. Unabhängig von der `admins`-Tabelle.

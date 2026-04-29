@@ -843,11 +843,11 @@ render();
       <div style={styles.navBar}>
         {[
           { key: 'home', label: '🏠 Home' },
-          { key: 'spieltag', label: '🗓️ Tag' },
           { key: 'ergebnisse', label: '📋 Spiele' },
           { key: 'stats', label: '📊 Stats' },
           { key: 'scorers', label: '⚽ Tore' },
           { key: 'statspro', label: '⭐ Pro' },
+          { key: 'spieltag', label: '🗓️ Tag' },
         ].map(({ key, label }) => (
           <button key={key} style={{ ...styles.navButton, ...(view === key ? styles.navButtonActive : {}) }} onClick={() => { setView(key); if (key === 'home') setEditingGame(null); }}>
             {label}
