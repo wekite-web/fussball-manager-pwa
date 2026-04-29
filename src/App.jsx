@@ -2,11 +2,11 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { parseCSV, validateCSV, importGames, exportGamesCSV, exportStatsCSV } from './csvUtils';
 
-const SUPABASE_URL = 'https://sdtgwkvmqprbwvtkswxd.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_iCVXxm3VuPQIHEvWkkqqPw_1jCVn0QO';
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+const supabase = createClient(
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_KEY
+);
 
-const ADMIN_PASSWORD = '1qay2wsx!Admin';
 const GELB = '#fbbf24';
 const BLAU = '#3b82f6';
 const GRUEN = '#10b981';
@@ -21,6 +21,7 @@ export default function FussballManagerPWA() {
   const [admins, setAdmins] = useState([]);
   const [gamePlayers, setGamePlayers] = useState([]);
   const [isAdminMode, setIsAdminMode] = useState(false);
+  const [adminEmail, setAdminEmail] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
   const [showAdminLogin, setShowAdminLogin] = useState(false);
   const [newPlayer, setNewPlayer] = useState('');
@@ -54,6 +55,16 @@ export default function FussballManagerPWA() {
   // ─── INITIAL LOAD ──────────────────────────────────────────────────────────
   useEffect(() => {
     loadAll();
+  }, []);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setIsAdminMode(!!session);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsAdminMode(!!session);
+    });
+    return () => subscription.unsubscribe();
   }, []);
 
   const loadAll = async () => {
@@ -331,16 +342,25 @@ export default function FussballManagerPWA() {
     showNotification('✅ Teams generiert!');
   };
 
-  const handleAdminLogin = (password) => {
-    if (password === ADMIN_PASSWORD) {
-      setIsAdminMode(true);
+  const handleAdminLogin = async () => {
+    const { error } = await supabase.auth.signInWithPassword({
+      email: adminEmail,
+      password: adminPassword,
+    });
+    if (error) {
+      alert('❌ Login fehlgeschlagen: ' + error.message);
+      setAdminPassword('');
+    } else {
+      setAdminEmail('');
       setAdminPassword('');
       setShowAdminLogin(false);
       showNotification('✅ Admin-Mode aktiviert');
-    } else {
-      alert('❌ Falsches Passwort!');
-      setAdminPassword('');
     }
+  };
+
+  const handleAdminLogout = async () => {
+    await supabase.auth.signOut();
+    showNotification('Admin-Mode deaktiviert');
   };
 
   const handleAddPlayer = async (e) => {
@@ -609,8 +629,9 @@ export default function FussballManagerPWA() {
       <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
         <div style={{ ...styles.card, maxWidth: '300px' }}>
           <h3 style={{ textAlign: 'center', marginTop: 0 }}>🔐 Admin-Login</h3>
-          <input type="password" placeholder="Passwort" value={adminPassword} onChange={(e) => setAdminPassword(e.target.value)} style={styles.input} onKeyPress={(e) => { if (e.key === 'Enter') handleAdminLogin(adminPassword); }} autoFocus />
-          <button onClick={() => handleAdminLogin(adminPassword)} style={{ ...styles.button, ...styles.buttonPrimary, marginBottom: '0.5rem' }}>✅ Anmelden</button>
+          <input type="email" placeholder="E-Mail" value={adminEmail} onChange={(e) => setAdminEmail(e.target.value)} style={{ ...styles.input, marginBottom: '0.5rem' }} autoFocus />
+          <input type="password" placeholder="Passwort" value={adminPassword} onChange={(e) => setAdminPassword(e.target.value)} style={styles.input} onKeyPress={(e) => { if (e.key === 'Enter') handleAdminLogin(); }} />
+          <button onClick={handleAdminLogin} style={{ ...styles.button, ...styles.buttonPrimary, marginBottom: '0.5rem' }}>✅ Anmelden</button>
           <button onClick={() => setShowAdminLogin(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>Abbrechen</button>
         </div>
       </div>
@@ -623,7 +644,7 @@ export default function FussballManagerPWA() {
           <div style={{ minWidth: '44px' }} />
         )}
         <span style={styles.headerTitle}>⚽ Manager</span>
-        <button style={styles.adminButton} onClick={() => { if (isAdminMode) { setIsAdminMode(false); } else { setShowAdminLogin(true); } }} title={isAdminMode ? 'Admin-Mode AUS' : 'Admin-Mode AN'}>
+        <button style={styles.adminButton} onClick={() => { if (isAdminMode) { handleAdminLogout(); } else { setShowAdminLogin(true); } }} title={isAdminMode ? 'Admin-Mode AUS' : 'Admin-Mode AN'}>
           {isAdminMode ? '🔐' : '🔓'}
         </button>
       </div>
