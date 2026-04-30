@@ -7,6 +7,13 @@ const supabase = createClient(
   import.meta.env.VITE_SUPABASE_KEY
 );
 
+// Separater Client für Spieler-OTP-Auth — eigene localStorage-Session, stört Admin nicht
+const supabasePlayer = createClient(
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_KEY,
+  { auth: { storageKey: 'sb-player-session', persistSession: false } }
+);
+
 const GELB = '#fbbf24';
 const BLAU = '#3b82f6';
 const GRUEN = '#10b981';
@@ -21,6 +28,13 @@ export default function FussballManagerPWA() {
   const [admins, setAdmins] = useState([]);
   const [gamePlayers, setGamePlayers] = useState([]);
   const [isAdminMode, setIsAdminMode] = useState(false);
+  const [adminUsers, setAdminUsers] = useState([]);
+  const [motmVotes, setMotmVotes] = useState([]);
+  const [motmModal, setMotmModal] = useState(null); // { gameId, step: 'email'|'otp'|'vote', voterName }
+  const [motmEmail, setMotmEmail] = useState('');
+  const [motmOtpCode, setMotmOtpCode] = useState('');
+  const [motmLoading, setMotmLoading] = useState(false);
+  const [motmError, setMotmError] = useState('');
   const [adminEmail, setAdminEmail] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
   const [showAdminLogin, setShowAdminLogin] = useState(false);
@@ -60,23 +74,27 @@ export default function FussballManagerPWA() {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setIsAdminMode(!!session);
+      if (session) {
+        setIsAdminMode(adminUsers.some((a) => a.email === session.user?.email));
+      }
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setIsAdminMode(!!session);
+      setIsAdminMode(!!session && adminUsers.some((a) => a.email === session.user?.email));
     });
     return () => subscription.unsubscribe();
-  }, []);
+  }, [adminUsers]);
 
   const loadAll = async () => {
     await Promise.all([
       loadAdmins(),
+      loadAdminUsers(),
       loadPlayers(),
       loadGames(),
       loadGoals(),
       loadGameSwaps(),
       loadPlayerPositions(),
       loadGamePlayers(),
+      loadMotmVotes(),
     ]);
   };
 
@@ -114,6 +132,16 @@ export default function FussballManagerPWA() {
   const loadGamePlayers = async () => {
     const { data } = await supabase.from('game_players').select('*');
     setGamePlayers(data || []);
+  };
+
+  const loadAdminUsers = async () => {
+    const { data } = await supabase.from('admin_users').select('*');
+    setAdminUsers(data || []);
+  };
+
+  const loadMotmVotes = async () => {
+    const { data } = await supabase.from('motm_votes').select('*');
+    setMotmVotes(data || []);
   };
 
   // ─── PLAYER STATS: aus games + game_players + game_swaps berechnet ─────────
@@ -807,6 +835,7 @@ render();
       await supabase.from('players').update({
         birthdate: info.birthdate || null,
         notes: info.notes || null,
+        email: info.email || null,
       }).eq('id', playerId);
       await loadPlayers();
       setEditingInfo({ ...editingInfo, [playerId]: false });
@@ -815,6 +844,97 @@ render();
       console.error('Fehler:', err);
       alert('Fehler beim Speichern');
     }
+  };
+
+  // ─── MAN OF THE MATCH ─────────────────────────────────────────────────────
+  const isVotingOpen = (gameDate) => {
+    const diff = (new Date() - new Date(gameDate)) / (1000 * 60 * 60 * 24);
+    return diff >= 0 && diff <= 7;
+  };
+
+  const handleMotmRequestOtp = async () => {
+    setMotmLoading(true);
+    setMotmError('');
+    const { error } = await supabasePlayer.auth.signInWithOtp({
+      email: motmEmail,
+      options: { shouldCreateUser: false },
+    });
+    setMotmLoading(false);
+    if (error) {
+      setMotmError('E-Mail nicht bekannt oder Fehler beim Senden.');
+    } else {
+      setMotmModal((m) => ({ ...m, step: 'otp' }));
+    }
+  };
+
+  const handleMotmVerifyOtp = async () => {
+    setMotmLoading(true);
+    setMotmError('');
+    const { data, error } = await supabasePlayer.auth.verifyOtp({
+      email: motmEmail,
+      token: motmOtpCode,
+      type: 'email',
+    });
+    setMotmLoading(false);
+    if (error || !data?.session) {
+      setMotmError('Ungültiger Code. Bitte erneut versuchen.');
+      return;
+    }
+    const playerRecord = players.find((p) => p.email === motmEmail);
+    if (!playerRecord) {
+      setMotmError('Diese E-Mail ist keinem Spieler zugeordnet.');
+      await supabasePlayer.auth.signOut();
+      return;
+    }
+    const wasInGame = gamePlayers.some(
+      (gp) => gp.game_id === motmModal.gameId && gp.player_name === playerRecord.name
+    );
+    if (!wasInGame) {
+      setMotmError('Du warst bei diesem Spiel nicht dabei.');
+      await supabasePlayer.auth.signOut();
+      return;
+    }
+    const alreadyVoted = motmVotes.some(
+      (v) => v.game_id === motmModal.gameId && v.voter_email === motmEmail
+    );
+    if (alreadyVoted) {
+      await supabasePlayer.auth.signOut();
+      setMotmModal(null);
+      setMotmEmail('');
+      setMotmOtpCode('');
+      showNotification('Du hast für dieses Spiel bereits abgestimmt.');
+      return;
+    }
+    setMotmModal((m) => ({ ...m, step: 'vote', voterName: playerRecord.name }));
+  };
+
+  const handleMotmVote = async (votedFor) => {
+    setMotmLoading(true);
+    setMotmError('');
+    const { error } = await supabasePlayer.from('motm_votes').insert([{
+      game_id: motmModal.gameId,
+      voter_email: motmEmail,
+      voted_for: votedFor,
+    }]);
+    await supabasePlayer.auth.signOut();
+    setMotmLoading(false);
+    if (error) {
+      setMotmError('Fehler beim Speichern der Stimme.');
+      return;
+    }
+    await loadMotmVotes();
+    setMotmModal(null);
+    setMotmEmail('');
+    setMotmOtpCode('');
+    showNotification('✅ Stimme abgegeben!');
+  };
+
+  const closeMotmModal = async () => {
+    await supabasePlayer.auth.signOut();
+    setMotmModal(null);
+    setMotmEmail('');
+    setMotmOtpCode('');
+    setMotmError('');
   };
 
   // ─── STYLES ────────────────────────────────────────────────────────────────
@@ -866,6 +986,50 @@ render();
         </div>
       </div>
     )}
+    {motmModal && (() => {
+      const candidates = motmModal.step === 'vote'
+        ? gamePlayers.filter((gp) => gp.game_id === motmModal.gameId && gp.player_name !== motmModal.voterName).map((gp) => gp.player_name)
+        : [];
+      return (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.75)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000, padding: '1rem' }}>
+          <div style={{ ...styles.card, maxWidth: '320px', width: '100%' }}>
+            <h3 style={{ textAlign: 'center', marginTop: 0, marginBottom: '0.25rem' }}>⭐ Man of the Match</h3>
+            {motmModal.step === 'email' && (
+              <>
+                <p style={{ fontSize: '0.85rem', color: '#9ca3af', textAlign: 'center', marginBottom: '1rem', marginTop: 0 }}>Gib deine E-Mail ein. Du erhältst einen Code.</p>
+                <input type="email" placeholder="deine@email.at" value={motmEmail} onChange={(e) => setMotmEmail(e.target.value)} style={{ ...styles.input, marginBottom: '0.5rem' }} autoFocus onKeyPress={(e) => { if (e.key === 'Enter') handleMotmRequestOtp(); }} />
+                {motmError && <p style={{ color: '#ef4444', fontSize: '0.8rem', marginBottom: '0.5rem', textAlign: 'center' }}>{motmError}</p>}
+                <button onClick={handleMotmRequestOtp} disabled={motmLoading || !motmEmail} style={{ ...styles.button, ...styles.buttonPrimary, marginBottom: '0.5rem', opacity: (!motmEmail || motmLoading) ? 0.5 : 1 }}>{motmLoading ? 'Sende...' : '📧 Code senden'}</button>
+                <button onClick={closeMotmModal} style={{ ...styles.button, ...styles.buttonSecondary }}>Abbrechen</button>
+              </>
+            )}
+            {motmModal.step === 'otp' && (
+              <>
+                <p style={{ fontSize: '0.85rem', color: '#9ca3af', textAlign: 'center', marginBottom: '1rem', marginTop: 0 }}>Code an <strong style={{ color: '#fff' }}>{motmEmail}</strong> gesendet.</p>
+                <input type="text" inputMode="numeric" placeholder="6-stelliger Code" value={motmOtpCode} onChange={(e) => setMotmOtpCode(e.target.value)} style={{ ...styles.input, marginBottom: '0.5rem', letterSpacing: '0.2em', textAlign: 'center' }} autoFocus maxLength={6} onKeyPress={(e) => { if (e.key === 'Enter') handleMotmVerifyOtp(); }} />
+                {motmError && <p style={{ color: '#ef4444', fontSize: '0.8rem', marginBottom: '0.5rem', textAlign: 'center' }}>{motmError}</p>}
+                <button onClick={handleMotmVerifyOtp} disabled={motmLoading || motmOtpCode.length < 6} style={{ ...styles.button, ...styles.buttonPrimary, marginBottom: '0.5rem', opacity: (motmOtpCode.length < 6 || motmLoading) ? 0.5 : 1 }}>{motmLoading ? 'Prüfe...' : '✅ Bestätigen'}</button>
+                <button onClick={closeMotmModal} style={{ ...styles.button, ...styles.buttonSecondary }}>Abbrechen</button>
+              </>
+            )}
+            {motmModal.step === 'vote' && (
+              <>
+                <p style={{ fontSize: '0.85rem', color: '#9ca3af', textAlign: 'center', marginBottom: '1rem', marginTop: 0 }}>Wer war der beste Spieler? (als <strong style={{ color: GRUEN }}>{motmModal.voterName}</strong>)</p>
+                {motmError && <p style={{ color: '#ef4444', fontSize: '0.8rem', marginBottom: '0.5rem', textAlign: 'center' }}>{motmError}</p>}
+                <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                  {candidates.map((name) => (
+                    <button key={name} onClick={() => handleMotmVote(name)} disabled={motmLoading} style={{ ...styles.button, ...styles.buttonSecondary, marginBottom: '0.5rem', textAlign: 'left' }}>
+                      ⭐ {name}
+                    </button>
+                  ))}
+                </div>
+                <button onClick={closeMotmModal} style={{ ...styles.button, background: 'rgba(255,255,255,0.05)', color: '#6b7280', border: 'none', marginBottom: 0, marginTop: '0.25rem' }}>Abbrechen</button>
+              </>
+            )}
+          </div>
+        </div>
+      );
+    })()}
     <div style={styles.topNav}>
       <div style={styles.header}>
         {view !== 'home' ? (
@@ -1212,6 +1376,41 @@ render();
                       </div>
                     </div>
                   )}
+
+                  {/* Man of the Match */}
+                  {(() => {
+                    const gameVotes = motmVotes.filter((v) => v.game_id === game.game_id);
+                    const voteCount = {};
+                    gameVotes.forEach((v) => { voteCount[v.voted_for] = (voteCount[v.voted_for] || 0) + 1; });
+                    const winner = gameVotes.length > 0
+                      ? Object.entries(voteCount).sort((a, b) => b[1] - a[1])[0]
+                      : null;
+                    const votingOpen = isVotingOpen(game.date);
+                    return (
+                      <div style={{ borderTop: '1px solid rgba(16,185,129,0.15)', paddingTop: '0.75rem', marginTop: scorerList.length > 0 ? '0.75rem' : 0 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div style={{ fontSize: '0.75rem', color: '#f59e0b', fontWeight: '600' }}>⭐ Man of the Match</div>
+                          {votingOpen && (
+                            <button onClick={() => { setMotmModal({ gameId: game.game_id, step: 'email' }); setMotmEmail(''); setMotmOtpCode(''); setMotmError(''); }}
+                              style={{ background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.4)', color: '#f59e0b', borderRadius: '6px', padding: '0.2rem 0.6rem', fontSize: '0.75rem', cursor: 'pointer', fontWeight: '600' }}>
+                              Abstimmen
+                            </button>
+                          )}
+                        </div>
+                        {winner ? (
+                          <div style={{ marginTop: '0.4rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <span style={{ fontSize: '1.1rem' }}>🏅</span>
+                            <span style={{ fontWeight: '700', color: '#fff' }}>{winner[0]}</span>
+                            <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>{winner[1]} Stimme{winner[1] !== 1 ? 'n' : ''}</span>
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: '0.8rem', color: '#6b7280', marginTop: '0.35rem' }}>
+                            {votingOpen ? 'Noch keine Stimmen' : 'Keine Abstimmung'}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               );
             })}
@@ -1601,6 +1800,10 @@ render();
                               <textarea value={editingInfo[player.id].notes || ''} onChange={(e) => setEditingInfo({ ...editingInfo, [player.id]: { ...editingInfo[player.id], notes: e.target.value } })}
                                 rows={3} placeholder="Freitext..."
                                 style={{ ...styles.input, marginBottom: '0.75rem', fontSize: '0.85rem', padding: '0.5rem', resize: 'vertical', fontFamily: 'inherit' }} />
+                              <label style={{ fontSize: '0.75rem', color: '#9ca3af', display: 'block', marginBottom: '0.25rem' }}>📧 E-Mail (für MOTM-Abstimmung)</label>
+                              <input type="email" value={editingInfo[player.id].email || ''} onChange={(e) => setEditingInfo({ ...editingInfo, [player.id]: { ...editingInfo[player.id], email: e.target.value } })}
+                                placeholder="spieler@email.at"
+                                style={{ ...styles.input, marginBottom: '0.75rem', fontSize: '0.85rem', padding: '0.5rem' }} />
                               <div style={{ display: 'flex', gap: '0.5rem' }}>
                                 <button onClick={() => handleSavePlayerInfo(player.id)}
                                   style={{ ...styles.button, ...styles.buttonPrimary, marginBottom: 0, flex: 1, padding: '0.5rem', fontSize: '0.85rem' }}>✅ Speichern</button>
@@ -1610,14 +1813,15 @@ render();
                             </div>
                           ) : (
                             <div>
-                              <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.8rem', color: '#9ca3af', marginBottom: '0.5rem' }}>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', fontSize: '0.8rem', color: '#9ca3af', marginBottom: '0.5rem' }}>
                                 {player.birthdate && <span>🎂 {player.birthdate} <span style={{ color: GRUEN, fontWeight: '600' }}>({age} J.)</span></span>}
                                 {isAdminMode && player.notes && <span style={{ color: '#d1d5db' }}>📝 {player.notes}</span>}
+                                {isAdminMode && player.email && <span style={{ color: '#6b7280' }}>📧 {player.email}</span>}
                               </div>
                               {isAdminMode && (
-                                <button onClick={() => setEditingInfo({ ...editingInfo, [player.id]: { birthdate: player.birthdate || '', notes: player.notes || '' } })}
+                                <button onClick={() => setEditingInfo({ ...editingInfo, [player.id]: { birthdate: player.birthdate || '', notes: player.notes || '', email: player.email || '' } })}
                                   style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: '0.75rem', padding: 0 }}>
-                                  ✏️ {player.birthdate || player.notes ? 'Info bearbeiten' : 'Geb. & Notiz hinzufügen'}
+                                  ✏️ {player.birthdate || player.notes || player.email ? 'Info bearbeiten' : 'Geb., Notiz & E-Mail hinzufügen'}
                                 </button>
                               )}
                             </div>

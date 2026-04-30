@@ -49,7 +49,9 @@ Jede View ist ein eigener `if (view === '...') return (...)` Block am Ende der K
 - **Zeile 2 (Tab-Nav):** 6 Tabs — Home / Spiele / Stats / Tore / Pro / Tag — Tab-Stil mit grünem Unterstrich
 - `container.paddingTop: '108px'` gleicht die Höhe beider Zeilen aus
 
-**Admin-Modus:** Login via `supabase.auth.signInWithPassword()` (Email + Passwort). Session wird beim App-Start via `getSession()` wiederhergestellt und über `onAuthStateChange` synchron gehalten. Logout via `supabase.auth.signOut()`. `isAdminMode` State spiegelt den Session-Status. Unabhängig von der `admins`-Tabelle.
+**Admin-Modus:** Login via `supabase.auth.signInWithPassword()` (Email + Passwort). Session wird beim App-Start via `getSession()` wiederhergestellt und über `onAuthStateChange` synchron gehalten. Logout via `supabase.auth.signOut()`. `isAdminMode = !!session && adminUsers.some(a => a.email === session.user.email)` — geprüft gegen `admin_users`-Tabelle. Unabhängig von der `admins`-Tabelle (die nur für 👑-Anzeige ist).
+
+**Spieler-Auth (MOTM):** Separater `supabasePlayer`-Client mit eigenem `storageKey: 'sb-player-session'` — Spieler melden sich per OTP (Email-Code) an, ohne die Admin-Session zu stören. Nach Vote: automatischer Logout. `shouldCreateUser: false` verhindert unbekannte E-Mails.
 
 ### Konfiguration
 
@@ -68,7 +70,7 @@ Die App liest **nur Rohdaten** — alle Statistiken werden zur Laufzeit via `use
 
 | Tabelle | Inhalt |
 |---|---|
-| `players` | Spieler-Register (`id`, `name`, `birthdate` date optional, `notes` text optional) |
+| `players` | Spieler-Register (`id`, `name`, `birthdate` date optional, `notes` text optional, `email` text optional unique — für MOTM-Abstimmung) |
 | `player_positions` | Positions-Bewertungen (`position_sturm`, `position_mittelfeld`, `position_abwehr`, Skala 1–10) |
 | `games` | Spiel-Datensätze (`id` PK numerisch, `game_id` String `game_<timestamp>`, `date`, `team1`, `team2`, `score1`, `score2`) |
 | `game_results` | Duplikat des Ergebnisses (für Abfragen mit `winner`-Feld) |
@@ -76,6 +78,8 @@ Die App liest **nur Rohdaten** — alle Statistiken werden zur Laufzeit via `use
 | `goals` | Einzeltore (`game_id`, `player_name`, `team`) |
 | `game_swaps` | Tauschspieler pro Spiel (`game_id`, `player_name`) — Spieler die das Team gewechselt haben; bekommen immer 1,5 Punkte |
 | `admins` | Spieler die mit 👑 in der Tabelle und Spielerverwaltung angezeigt werden (z.B. Organisatoren) — kein Zusammenhang mit dem Admin-Modus |
+| `admin_users` | E-Mails der Admin-User (`email` PK) — bestimmt wer nach Login `isAdminMode = true` bekommt |
+| `motm_votes` | Man of the Match Stimmen (`game_id`, `voter_email`, `voted_for`, UNIQUE game_id+voter_email) — RLS: SELECT anon, INSERT nur authenticated mit matching email |
 
 **Wichtig:** `game_id` (String) und `id` (numerischer PK) sind unterschiedliche Felder. Beim Löschen braucht `games` den numerischen `id`, alle anderen Tabellen den String `game_id`.
 
